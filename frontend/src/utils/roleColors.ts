@@ -6,12 +6,12 @@
 import type { TemplateOut } from "../types";
 
 const ROLE_COLORS = [
-  "#1C3A62", // navy (primary)
-  "#B45309", // amber
-  "#5B21B6", // violet
-  "#2E7D32", // green
-  "#B3261E", // red
-  "#24425C", // ink blue
+  "#1A56DB", // Pumasi Sapphire (primary)
+  "#B54708", // Amber
+  "#6941C6", // Violet
+  "#067647", // Emerald
+  "#B42318", // Crimson
+  "#0284C7", // Sky blue
 ];
 
 export function roleColor(role: string, roles: readonly string[]): string {
