@@ -109,8 +109,15 @@ async function verify(): Promise<void> {
     <v-card v-else-if="view" class="state-card" variant="flat" border>
       <v-card-text class="py-8 px-6">
         <div class="d-flex align-center mb-4">
-          <img src="/logo-mark.png" alt="Pumasi" style="height: 32px; width: 32px;" class="mr-2" />
-          <span class="text-subtitle-1 font-weight-bold text-primary">Pumasi Sign</span>
+          <img
+            :src="(view as any).branding?.logo_data_url || '/logo-mark.png'"
+            :alt="(view as any).branding?.company_name || 'Pumasi Sign'"
+            style="height: 36px; max-width: 140px; object-fit: contain;"
+            class="mr-2"
+          />
+          <span class="text-subtitle-1 font-weight-bold" :style="{ color: (view as any).branding?.primary_color || '#1A56DB' }">
+            {{ (view as any).branding?.company_name || 'Pumasi Sign' }}
+          </span>
         </div>
         <p class="text-overline mb-1">
           {{ phase === "retrieve" ? "Signed document" : "Signature requested" }}
@@ -120,7 +127,7 @@ async function verify(): Promise<void> {
           {{
             phase === "retrieve"
               ? CLOSED_MESSAGES[view.status]
-              : `${view.sender_name} at Pumasi has requested your signature.`
+              : `${view.sender_name} at ${(view as any).branding?.company_name || 'Pumasi'} has requested your signature.`
           }}
         </p>
 
@@ -129,7 +136,14 @@ async function verify(): Promise<void> {
             To verify it's you, we'll email a 6-digit code to <strong>{{ view.masked_email }}</strong>.
           </p>
           <v-alert v-if="codeError" type="error" density="compact" class="mb-4">{{ codeError }}</v-alert>
-          <v-btn color="primary" variant="flat" :loading="sending" @click="requestCode">Email me a code</v-btn>
+          <v-btn
+            :style="{ backgroundColor: (view as any).branding?.primary_color || '#1A56DB', color: '#ffffff' }"
+            variant="flat"
+            :loading="sending"
+            @click="requestCode"
+          >
+            Email me a code
+          </v-btn>
         </template>
 
         <template v-else-if="phase === 'retrieve'">

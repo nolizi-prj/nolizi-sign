@@ -3,15 +3,18 @@ import { onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "./store/auth";
 import { useUiStore } from "./store/ui";
+import { useBrandingStore } from "./store/branding";
 import http from "./utils/http";
 import FeedbackDialog from "./components/FeedbackDialog.vue";
 
 const auth = useAuthStore();
 const ui = useUiStore();
+const branding = useBrandingStore();
 const router = useRouter();
 
-onMounted(() => {
+onMounted(async () => {
   void auth.fetchMe();
+  await branding.fetchBranding();
 });
 
 async function logout(): Promise<void> {
@@ -23,11 +26,11 @@ async function logout(): Promise<void> {
 
 <template>
   <v-app>
-    <v-app-bar color="primary" density="comfortable">
+    <v-app-bar :style="{ backgroundColor: branding.primaryColor || '#1A56DB', color: '#ffffff' }" density="comfortable">
       <v-app-bar-title>
         <router-link :to="{ name: 'dashboard' }" class="app-title-link">
-          <img src="/logo-mark-white.png" alt="" class="app-logo mr-2" />
-          Pumasi Sign
+          <img :src="branding.logoDataUrl || '/logo-mark-white.png'" alt="" class="app-logo mr-2" />
+          {{ branding.companyName || 'Pumasi Sign' }}
         </router-link>
       </v-app-bar-title>
       <v-spacer />
@@ -43,6 +46,9 @@ async function logout(): Promise<void> {
           :to="{ name: 'templates' }"
         >
           Templates
+        </v-btn>
+        <v-btn variant="text" prepend-icon="mdi-palette-outline" :to="{ name: 'branding' }">
+          Branding
         </v-btn>
         <v-btn v-if="auth.isAdmin" variant="text" prepend-icon="mdi-account-group" :to="{ name: 'admin-users' }">
           Users
