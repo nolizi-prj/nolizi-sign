@@ -316,6 +316,8 @@ async function startDownload(): Promise<void> {
           <p class="mb-2">
             {{ filtersActive ? "Nothing matches your search or filters." : EMPTY_TEXT[view] }}
           </p>
+          <!-- Distinct label from the header's "New envelope": two identically
+               named links on one page trip strict accessible-name lookups. -->
           <v-btn
             v-if="!filtersActive && canSend && ['inbox', 'drafts', 'sent', 'completed'].includes(view)"
             color="primary"
@@ -323,7 +325,7 @@ async function startDownload(): Promise<void> {
             prepend-icon="mdi-send"
             :to="{ name: 'send' }"
           >
-            New envelope
+            Send your first envelope
           </v-btn>
         </v-card-text>
 
