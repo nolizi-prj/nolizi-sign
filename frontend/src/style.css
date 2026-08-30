@@ -1,0 +1,10 @@
+/* Light only: native inputs are overlaid on white PDF pages (SignView,
+   builder), and `light dark` here let a dark-mode OS render them with dark
+   UA styling on top of white paper. The Vuetify theme is light to match. */
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+}

@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pumasi_sign_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/pumasi_sign_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install LibreOffice (for docx/xlsx/pptx conversion tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc libreoffice-impress fonts-noto-cjk fonts-nanum fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Ruff check
+        working-directory: backend
+        run: ruff check .
+
+      - name: Ruff format check
+        working-directory: backend
+        run: ruff format --check .
+
+      - name: Run pytest
+        working-directory: backend
+        run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx vue-tsc --noEmit
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm run test:unit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+
+    # A dedicated Postgres database for the e2e run — not the `backend`
+    # job's database (separate jobs run on separate runners anyway) and
+    # never the production Railway DB. Matches the ADMIN_EMAILS below,
+    # which must stay in sync with frontend/e2e/constants.ts's ADMIN_EMAIL.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pumasi_sign_e2e
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright's Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the Docker image
+        run: docker build -t pumasi-sign:e2e .
+
+      # --network host: lets the container reach the `postgres` service
+      # (exposed on the runner's localhost:5433) via plain "localhost", and
+      # serves the app directly on the runner's localhost:8080 with no -p
+      # mapping needed. DATA_DIR is a plain in-container path — no volume —
+      # since app/storage.py creates it on first write; container is
+      # ephemeral and torn down at the end of this job either way.
+      - name: Run the container
+        run: |
+          docker run -d --name pumasi-sign-e2e \
+            --network host \
+            -e PORT=8080 \
+            -e DEV_AUTH_BYPASS=1 \
+            -e DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5433/pumasi_sign_e2e \
+            -e DATA_DIR=/data \
+            -e ADMIN_EMAILS=e2e-admin@pumasi.ai \
+            -e APP_BASE_URL=http://localhost:8080 \
+            -e SESSION_SECRET=e2e-ci-session-secret \
+            pumasi-sign:e2e
+
+      - name: Wait for the container to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8080/api/health > /dev/null; then
+              echo "container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "container did not become healthy in time" >&2
+          docker logs pumasi-sign-e2e
+          exit 1
+
+      - name: Run Playwright e2e tests
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:8080
+        run: npx playwright test
+
+      - name: Container logs
+        if: always()
+        run: docker logs pumasi-sign-e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f pumasi-sign-e2e

@@ -1,0 +1,30 @@
+[project]
+name = "pumasi-sign-backend"
+version = "0.1.0"
+description = "Pumasi Sign backend (FastAPI)"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 121
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["A", "B", "COM", "D202", "E", "F", "I", "N", "PERF", "RET", "SIM", "UP", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D202"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
