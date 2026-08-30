@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign — public authentication (sign in & sign up), passwordless:
- * a 6-digit code emailed to the address. Google/Microsoft SSO will return
- * when the worker implements the OAuth endpoints.
+ * Pumasi Sign — public authentication (sign in & sign up): Google or
+ * Microsoft OAuth, or a passwordless 6-digit code emailed to the address.
  */
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -28,6 +27,9 @@ const next = computed(() => {
   const raw = route.query.next;
   return typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
 });
+
+const googleSsoUrl = computed(() => `/api/auth/oauth/google?next=${encodeURIComponent(next.value)}`);
+const msSsoUrl = computed(() => `/api/auth/oauth/microsoft?next=${encodeURIComponent(next.value)}`);
 
 async function requestCode() {
   if (!email.value.trim() || !email.value.includes("@")) {
@@ -112,8 +114,23 @@ function resetToEmail() {
         {{ error }}
       </v-alert>
 
-      <!-- Step 1: Email Input -->
+      <!-- Step 1: OAuth + Email Input -->
       <div v-if="step === 'email'">
+        <div class="d-flex flex-column gap-2 mb-2">
+          <v-btn variant="outlined" size="large" block :href="googleSsoUrl" prepend-icon="mdi-google" class="border mb-2">
+            Continue with Google
+          </v-btn>
+          <v-btn variant="outlined" size="large" block :href="msSsoUrl" prepend-icon="mdi-microsoft" class="border">
+            Continue with Microsoft
+          </v-btn>
+        </div>
+
+        <div class="d-flex align-center my-4">
+          <v-divider />
+          <span class="px-3 text-caption text-medium-emphasis">or continue with email</span>
+          <v-divider />
+        </div>
+
         <!-- Name field for Sign-Up mode -->
         <v-text-field
           v-if="activeTab === 'signup'"
@@ -156,6 +173,10 @@ function resetToEmail() {
           <p class="text-body-2 mb-1">
             We sent a 6-digit verification code to <strong>{{ email }}</strong>.
           </p>
+          <p class="text-caption text-medium-emphasis mb-0">
+            It can take a minute to arrive — and check your spam folder. Marking it
+            "Not spam" makes sure future codes land in your inbox.
+          </p>
         </div>
 
         <v-otp-input
@@ -180,6 +201,9 @@ function resetToEmail() {
         </v-btn>
 
         <div class="text-center">
+          <v-btn variant="text" size="small" :loading="sending" @click="requestCode">
+            Resend code
+          </v-btn>
           <v-btn variant="text" size="small" @click="resetToEmail">
             Use a different email
           </v-btn>
@@ -188,7 +212,9 @@ function resetToEmail() {
 
       <div class="text-center mt-6 pt-4 border-t">
         <span class="text-caption text-medium-emphasis">
-          By continuing, you agree to Pumasi's Terms of Service and Privacy Policy.
+          By continuing, you agree to Pumasi's
+          <router-link to="/terms">Terms of Service</router-link> and
+          <router-link to="/privacy">Privacy Policy</router-link>.
         </span>
       </div>
     </v-card>

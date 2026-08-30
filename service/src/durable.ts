@@ -19,17 +19,30 @@
 import { PDFDocument } from 'pdf-lib';
 import { stampAndCertifyPdf, PlacedField, SignerInfo } from './core/stamping.js';
 import { sendMail, mailConfigured, MailEnv } from './mail.js';
+import { R2SignStorage } from './storage/r2.js';
+import { convertOfficeToPdfViaGraph, SUPPORTED_OFFICE_FORMATS } from './convert/graph.js';
 
 export interface Env extends MailEnv {
   SIGN_SERVICE: DurableObjectNamespace;
   BASE_URL?: string;
+  DOCUMENTS?: any; // R2 bucket binding
+  MS_GRAPH_TENANT_ID?: string;
+  MS_GRAPH_CLIENT_ID?: string;
+  MS_GRAPH_CLIENT_SECRET?: string;
+  MS_GRAPH_DRIVE_ID?: string;
+  GOOGLE_OAUTH_CLIENT_ID?: string;
+  GOOGLE_OAUTH_CLIENT_SECRET?: string;
+  MS_OAUTH_CLIENT_ID?: string;
+  MS_OAUTH_CLIENT_SECRET?: string;
 }
 
 const SESSION_TTL_DAYS = 30;
 const SIGNER_TTL_HOURS = 24;
 const CODE_TTL_MIN = 15;
 const RESEND_GUARD_SEC = 60;
-const MAX_PDF_BYTES = 1_500_000; // DO SQLite row ceiling is 2MB; leave headroom. R2 lifts this later.
+// With R2 the ceiling is generous; without it, PDFs live in DO SQLite rows (2MB hard limit).
+const MAX_PDF_BYTES_R2 = 20_000_000;
+const MAX_PDF_BYTES_SQLITE = 1_500_000;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -249,6 +262,9 @@ export class PumasiSignService implements DurableObject {
       `ALTER TABLE submission_fields ADD COLUMN default_value TEXT`,
       `ALTER TABLE submission_fields ADD COLUMN field_role TEXT`,
       `ALTER TABLE templates ADD COLUMN roles_json TEXT`,
+      `ALTER TABLE submissions ADD COLUMN original_pdf_key TEXT`,
+      `ALTER TABLE submissions ADD COLUMN completed_pdf_key TEXT`,
+      `ALTER TABLE templates ADD COLUMN pdf_key TEXT`,
     ];
     for (const stmt of alters) {
       try { this.sql.exec(stmt); } catch { /* already applied */ }
@@ -324,14 +340,70 @@ export class PumasiSignService implements DurableObject {
     return this.env.BASE_URL || 'https://sign.pumasi.ai';
   }
 
-  private async mailOrLog(to: string, subject: string, text: string): Promise<boolean> {
+  // ── document storage: R2 when bound, DO SQLite blobs otherwise ─────────
+
+  private docs(): R2SignStorage | null {
+    return this.env.DOCUMENTS ? new R2SignStorage(this.env.DOCUMENTS) : null;
+  }
+
+  private maxPdfBytes(): number {
+    return this.docs() ? MAX_PDF_BYTES_R2 : MAX_PDF_BYTES_SQLITE;
+  }
+
+  /** Store PDF bytes; returns the R2 key, or null when R2 is unbound (caller falls back to a blob column). */
+  private async storePdf(prefix: string, id: string, bytes: Uint8Array): Promise<string | null> {
+    const store = this.docs();
+    if (!store) return null;
+    const key = `${prefix}/${id}.pdf`;
+    await store.putDocument(key, bytes, 'application/pdf');
+    return key;
+  }
+
+  /** Read a PDF that may live in R2 (key) or in a legacy blob column. */
+  private async loadPdf(key: string | null | undefined, blob: unknown): Promise<Uint8Array | null> {
+    if (key) {
+      const got = await this.docs()?.getDocument(String(key));
+      if (got) return got.data;
+    }
+    if (blob) return new Uint8Array(blob as ArrayBuffer);
+    return null;
+  }
+
+  private async graphConfig(): Promise<{ tenantId: string; clientId: string; clientSecret: string; driveId: string } | null> {
+    const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_DRIVE_ID } = this.env;
+    if (!MS_GRAPH_TENANT_ID || !MS_GRAPH_CLIENT_ID || !MS_GRAPH_CLIENT_SECRET || !MS_GRAPH_DRIVE_ID) return null;
+    return { tenantId: MS_GRAPH_TENANT_ID, clientId: MS_GRAPH_CLIENT_ID, clientSecret: MS_GRAPH_CLIENT_SECRET, driveId: MS_GRAPH_DRIVE_ID };
+  }
+
+  private async mailOrLog(to: string, subject: string, text: string, html?: string): Promise<boolean> {
     try {
-      await sendMail(this.env, { to, subject, text });
+      await sendMail(this.env, { to, subject, text, html });
       return true;
     } catch (err) {
       console.warn(`[mail] send to ${to} failed: ${(err as Error).message}`);
       return false;
     }
+  }
+
+  /** The one HTML shell every notification uses — consistent structure helps inbox placement. */
+  private mailHtml(heading: string, paragraphs: string[], opts?: { cta?: { label: string; url: string }; code?: string }): string {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const body = paragraphs.map((p) => `<p style="margin:0 0 14px;color:#333f4d;font-size:15px;line-height:1.55">${esc(p)}</p>`).join('');
+    const code = opts?.code
+      ? `<p style="margin:18px 0;text-align:center"><span style="display:inline-block;background:#f1f5fb;border:1px solid #d8e2f0;border-radius:8px;padding:12px 28px;font-size:28px;letter-spacing:8px;font-weight:700;color:#1a2b3c">${esc(opts.code)}</span></p>`
+      : '';
+    const cta = opts?.cta
+      ? `<p style="margin:22px 0;text-align:center"><a href="${opts.cta.url}" style="background:#1A56DB;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">${esc(opts.cta.label)}</a></p><p style="margin:0 0 14px;color:#8a97a5;font-size:12px;text-align:center;word-break:break-all">Or paste this link into your browser:<br>${esc(opts.cta.url)}</p>`
+      : '';
+    return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f8fa">
+<div style="max-width:520px;margin:0 auto;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="text-align:center;margin-bottom:18px"><span style="font-size:18px;font-weight:700;color:#1A56DB">Pumasi Sign</span></div>
+  <div style="background:#ffffff;border:1px solid #e3e8ee;border-radius:12px;padding:28px">
+    <h1 style="margin:0 0 16px;font-size:19px;color:#101828">${esc(heading)}</h1>
+    ${body}${code}${cta}
+  </div>
+  <p style="text-align:center;color:#98a2b3;font-size:12px;margin:16px 0 0">Sent by Pumasi Sign · sign.pumasi.ai<br>If you weren't expecting this email, you can safely ignore it.</p>
+</div></body></html>`;
   }
 
   /** Issue a 6-digit code for `key`, or explain why not yet. */
@@ -414,6 +486,11 @@ export class PumasiSignService implements DurableObject {
         s.email,
         `${senderName} sent you "${sub.title}" to sign`,
         `Hello ${s.name},\n\n${senderName} has requested your signature on "${sub.title}".\n\nReview and sign here:\n${link}\n\nYou will be asked for a verification code sent to this email address before the document opens.\n\n— Pumasi Sign`,
+        this.mailHtml(`${senderName} sent you a document to sign`, [
+          `Hello ${s.name},`,
+          `${senderName} has requested your signature on "${sub.title}".`,
+          `You will be asked for a verification code sent to this email address before the document opens.`,
+        ], { cta: { label: 'Review & sign', url: link } }),
       );
       if (ok) {
         this.audit(submissionId, 'invite_sent', s.email, s.name);
@@ -520,7 +597,7 @@ export class PumasiSignService implements DurableObject {
       })),
       my_submitter_id: mine?.id ?? null,
       archived_by_me: Boolean(sub.archived_at),
-      has_certificate: Boolean(sub.completed_pdf_blob),
+      has_certificate: Boolean(sub.completed_pdf_key || sub.completed_pdf_blob),
     };
   }
 
@@ -574,7 +651,126 @@ export class PumasiSignService implements DurableObject {
     }
   }
 
+  /** Find-or-create the account for a verified email, and mint a session cookie header. */
+  private establishSession(email: string, name: string, provider: string): { user: UserRow; cookie: string } {
+    let user = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, email);
+    const now = new Date().toISOString();
+    if (!user) {
+      const userId = `usr-${crypto.randomUUID().slice(0, 8)}`;
+      this.sql.exec(
+        `INSERT INTO users (id, email, name, provider, created_at) VALUES (?, ?, ?, ?, ?)`,
+        userId, email, name, provider, now,
+      );
+      this.sql.exec(
+        `INSERT INTO org_branding (id, owner_id, company_name, primary_color, created_at, updated_at)
+         VALUES (?, ?, ?, '#1A56DB', ?, ?)`,
+        `org-${crypto.randomUUID().slice(0, 8)}`, userId, `${name}'s Workspace`, now, now,
+      );
+      user = { id: userId, email, name, provider };
+    }
+    const token = newToken();
+    this.sql.exec(
+      `INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`,
+      token, user.id, new Date(Date.now() + SESSION_TTL_DAYS * 86400_000).toISOString(), now,
+    );
+    return { user, cookie: setCookie('sign_session', token, SESSION_TTL_DAYS * 86400) };
+  }
+
+  private oauthProvider(name: string): { authUrl: string; tokenUrl: string; clientId?: string; clientSecret?: string } | null {
+    if (name === 'google') {
+      return {
+        authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        clientId: this.env.GOOGLE_OAUTH_CLIENT_ID,
+        clientSecret: this.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      };
+    }
+    if (name === 'microsoft') {
+      return {
+        authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+        tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        clientId: this.env.MS_OAUTH_CLIENT_ID,
+        clientSecret: this.env.MS_OAUTH_CLIENT_SECRET,
+      };
+    }
+    return null;
+  }
+
   private async route(req: Request, url: URL, path: string, method: string): Promise<Response> {
+    // ── OAuth sign-in (Google / Microsoft) ────────────────────────────────
+    const oauthMatch = path.match(/^\/api\/auth\/oauth\/(google|microsoft)(\/callback)?$/);
+    if (oauthMatch && method === 'GET') {
+      const provider = this.oauthProvider(oauthMatch[1]);
+      if (!provider?.clientId || !provider.clientSecret) {
+        return json({ error: `${oauthMatch[1]} sign-in is not configured on this deployment.` }, 503);
+      }
+      const redirectUri = `${this.baseUrl()}/api/auth/oauth/${oauthMatch[1]}/callback`;
+
+      if (!oauthMatch[2]) {
+        const rawNext = url.searchParams.get('next') || '/';
+        const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
+        const state = newToken().slice(0, 32);
+        this.sql.exec(
+          `INSERT INTO auth_codes (id, email, code, expires_at, created_at) VALUES (?, ?, ?, ?, ?)`,
+          `oauth-${crypto.randomUUID().slice(0, 8)}`, `oauth:${state}`, JSON.stringify({ next }),
+          new Date(Date.now() + 10 * 60_000).toISOString(), new Date().toISOString(),
+        );
+        const q = new URLSearchParams({
+          client_id: provider.clientId,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+          scope: 'openid email profile',
+          state,
+          prompt: 'select_account',
+        });
+        return new Response(null, { status: 302, headers: { Location: `${provider.authUrl}?${q}` } });
+      }
+
+      // callback
+      const state = url.searchParams.get('state') || '';
+      const code = url.searchParams.get('code') || '';
+      const row = this.one<any>(
+        `SELECT code FROM auth_codes WHERE email = ? AND expires_at > ?`,
+        `oauth:${state}`, new Date().toISOString(),
+      );
+      if (!row || !code) {
+        return new Response(null, { status: 302, headers: { Location: '/login' } });
+      }
+      this.sql.exec(`DELETE FROM auth_codes WHERE email = ?`, `oauth:${state}`);
+      const next = (() => { try { return JSON.parse(String(row.code)).next || '/'; } catch { return '/'; } })();
+
+      const tokenRes = await fetch(provider.tokenUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: provider.clientId,
+          client_secret: provider.clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
+      if (!tokenRes.ok) {
+        console.warn(`[oauth] ${oauthMatch[1]} exchange failed: ${tokenRes.status} ${(await tokenRes.text()).slice(0, 200)}`);
+        return new Response(null, { status: 302, headers: { Location: '/login' } });
+      }
+      const tok = (await tokenRes.json()) as { id_token?: string };
+      // The id_token came directly from the provider's token endpoint over TLS —
+      // its payload is trustworthy without local signature verification.
+      const seg = tok.id_token?.split('.')[1];
+      let claims: any = {};
+      try {
+        claims = JSON.parse(atob((seg || '').replace(/-/g, '+').replace(/_/g, '/')));
+      } catch { /* fall through to the check below */ }
+      const email = String(claims.email || claims.preferred_username || '').trim().toLowerCase();
+      if (!email || !email.includes('@') || claims.email_verified === false) {
+        return new Response(null, { status: 302, headers: { Location: '/login' } });
+      }
+      const name = String(claims.name || email.split('@')[0]).slice(0, 120);
+      const { cookie } = this.establishSession(email, name, oauthMatch[1]);
+      return new Response(null, { status: 302, headers: { Location: next, 'Set-Cookie': cookie } });
+    }
+
     // ── auth ──────────────────────────────────────────────────────────────
     if (path === '/api/auth/login/request' && method === 'POST') {
       const body: any = await req.json();
@@ -591,6 +787,9 @@ export class PumasiSignService implements DurableObject {
         email,
         'Your Pumasi Sign verification code',
         `Your verification code is: ${issued.code}\n\nIt expires in ${CODE_TTL_MIN} minutes. If you did not request this, ignore this email.\n\n— Pumasi Sign`,
+        this.mailHtml('Your verification code', [
+          `Enter this code to sign in. It expires in ${CODE_TTL_MIN} minutes.`,
+        ], { code: issued.code }),
       );
       if (!ok) return json({ error: 'Could not send the verification email. Try again shortly.' }, 502);
       return json({ ok: true, email, message: 'Verification code sent. Check your email.' });
@@ -604,29 +803,8 @@ export class PumasiSignService implements DurableObject {
         return json({ error: 'Invalid or expired verification code' }, 401);
       }
 
-      let user = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, email);
-      const now = new Date().toISOString();
-      if (!user) {
-        const userId = `usr-${crypto.randomUUID().slice(0, 8)}`;
-        const name = String(body.name || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()));
-        this.sql.exec(
-          `INSERT INTO users (id, email, name, provider, created_at) VALUES (?, ?, ?, 'email', ?)`,
-          userId, email, name, now,
-        );
-        this.sql.exec(
-          `INSERT INTO org_branding (id, owner_id, company_name, primary_color, created_at, updated_at)
-           VALUES (?, ?, ?, '#1A56DB', ?, ?)`,
-          `org-${crypto.randomUUID().slice(0, 8)}`, userId, `${name}'s Workspace`, now, now,
-        );
-        user = { id: userId, email, name, provider: 'email' };
-      }
-
-      const token = newToken();
-      this.sql.exec(
-        `INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`,
-        token, user.id, new Date(Date.now() + SESSION_TTL_DAYS * 86400_000).toISOString(), now,
-      );
-
+      const displayName = String(body.name || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()));
+      const { user, cookie } = this.establishSession(email, displayName, 'email');
       const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, user.id);
       return json(
         {
@@ -635,7 +813,7 @@ export class PumasiSignService implements DurableObject {
           branding: branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB' },
         },
         200,
-        { 'Set-Cookie': setCookie('sign_session', token, SESSION_TTL_DAYS * 86400) },
+        { 'Set-Cookie': cookie },
       );
     }
 
@@ -736,10 +914,11 @@ export class PumasiSignService implements DurableObject {
       const body: any = await req.json();
       const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
       const pdfBytes = body.pdfBase64 ? dataUrlToBytes(`,${body.pdfBase64}`) : null;
+      const pdfKey = pdfBytes ? await this.storePdf('templates', id, pdfBytes) : null;
       this.sql.exec(
-        `INSERT INTO templates (id, name, created_by, pdf_blob, page_count, fields_json, roles_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, String(body.name || 'Untitled Template'), user.email, pdfBytes,
+        `INSERT INTO templates (id, name, created_by, pdf_blob, pdf_key, page_count, fields_json, roles_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, String(body.name || 'Untitled Template'), user.email, pdfKey ? null : pdfBytes, pdfKey,
         Number(body.pageCount ?? body.page_count) || 1, JSON.stringify(body.fields || []),
         JSON.stringify(body.roles || []), new Date().toISOString(),
       );
@@ -763,9 +942,10 @@ export class PumasiSignService implements DurableObject {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
       const id = path.split('/').pop()!;
-      const t = this.one<any>(`SELECT name, pdf_blob FROM templates WHERE id = ? AND created_by = ?`, id, user.email);
-      if (!t || !t.pdf_blob) return json({ error: 'Not found' }, 404);
-      return new Response(t.pdf_blob, {
+      const t = this.one<any>(`SELECT name, pdf_blob, pdf_key FROM templates WHERE id = ? AND created_by = ?`, id, user.email);
+      const bytes = t ? await this.loadPdf(t.pdf_key, t.pdf_blob) : null;
+      if (!bytes) return json({ error: 'Not found' }, 404);
+      return new Response(bytes.buffer as ArrayBuffer, {
         headers: { 'Content-Type': 'application/pdf', ...corsHeaders },
       });
     }
@@ -782,6 +962,7 @@ export class PumasiSignService implements DurableObject {
       for (const file of files) {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const lower = file.name.toLowerCase();
+        const ext = lower.split('.').pop() || '';
         if (lower.endsWith('.pdf')) {
           const src = await PDFDocument.load(bytes).catch(() => null);
           if (!src) return json({ error: `"${file.name}" is not a readable PDF.` }, 422);
@@ -797,13 +978,26 @@ export class PumasiSignService implements DurableObject {
             width: img.width * scale,
             height: img.height * scale,
           });
+        } else if (SUPPORTED_OFFICE_FORMATS.has(ext)) {
+          const cfg = await this.graphConfig();
+          if (!cfg) {
+            return json({ error: `"${file.name}": Office conversion is not configured on this deployment. Convert to PDF first.` }, 422);
+          }
+          const pdfBytes = await convertOfficeToPdfViaGraph(bytes, ext, cfg);
+          if (!pdfBytes) {
+            return json({ error: `"${file.name}" could not be converted. Check the file opens in Office, or convert it to PDF yourself.` }, 422);
+          }
+          const src = await PDFDocument.load(pdfBytes).catch(() => null);
+          if (!src) return json({ error: `"${file.name}": conversion produced an unreadable PDF.` }, 422);
+          const pages = await merged.copyPages(src, src.getPageIndices());
+          for (const p of pages) merged.addPage(p);
         } else {
-          return json({ error: `"${file.name}": only PDF, PNG, and JPG are supported here. Convert Office files to PDF first.` }, 422);
+          return json({ error: `"${file.name}": PDF, Office documents (Word, PowerPoint, Excel), PNG, and JPG are supported.` }, 422);
         }
       }
       const out = await merged.save();
-      if (out.length > MAX_PDF_BYTES) {
-        return json({ error: 'The combined document is too large (1.5MB limit for now).' }, 413);
+      if (out.length > this.maxPdfBytes()) {
+        return json({ error: `The combined document is too large (${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit).` }, 413);
       }
       return new Response(out.buffer as ArrayBuffer, {
         headers: { 'Content-Type': 'application/pdf', ...corsHeaders },
@@ -818,7 +1012,9 @@ export class PumasiSignService implements DurableObject {
       const file = form.get('file');
       if (!(file instanceof File)) return json({ error: 'A document file is required' }, 400);
       const pdfBytes = new Uint8Array(await file.arrayBuffer());
-      if (pdfBytes.length > MAX_PDF_BYTES) return json({ error: 'The document is too large (1.5MB limit for now).' }, 413);
+      if (pdfBytes.length > this.maxPdfBytes()) {
+        return json({ error: `The document is too large (${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit).` }, 413);
+      }
       const doc = await PDFDocument.load(pdfBytes).catch(() => null);
       if (!doc) return json({ error: 'The uploaded file is not a readable PDF.' }, 422);
 
@@ -843,20 +1039,22 @@ export class PumasiSignService implements DurableObject {
 
       // The backing adhoc template lets a draft reload into the wizard later.
       const tplId = `tpl-${crypto.randomUUID().slice(0, 8)}`;
+      const tplKey = await this.storePdf('templates', tplId, pdfBytes);
       this.sql.exec(
-        `INSERT INTO templates (id, name, created_by, pdf_blob, page_count, fields_json, roles_json, is_adhoc, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-        tplId, title, user.email, pdfBytes, pageCount, JSON.stringify(fields),
+        `INSERT INTO templates (id, name, created_by, pdf_blob, pdf_key, page_count, fields_json, roles_json, is_adhoc, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        tplId, title, user.email, tplKey ? null : pdfBytes, tplKey, pageCount, JSON.stringify(fields),
         JSON.stringify([...new Set(fields.map((f: any) => f.role).filter(Boolean))]), now,
       );
 
       const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
+      const pdfKey = await this.storePdf('originals', id, pdfBytes);
       this.sql.exec(
-        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, original_pdf_key, page_count, template_id,
                                   reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id, crypto.randomUUID().slice(0, 8), title, message, user.email,
-        isDraft ? 'draft' : 'pending', pdfBytes, pageCount, tplId,
+        isDraft ? 'draft' : 'pending', pdfKey ? null : pdfBytes, pdfKey, pageCount, tplId,
         remindersEnabled ? 1 : 0, reminderInterval, expiresAt, now, now,
       );
 
@@ -875,7 +1073,7 @@ export class PumasiSignService implements DurableObject {
       if (!user) return json({ error: 'Not signed in' }, 401);
       const body: any = await req.json();
       const tpl = this.one<any>(
-        `SELECT id, name, pdf_blob, page_count, fields_json FROM templates WHERE id = ? AND created_by = ?`,
+        `SELECT id, name, pdf_blob, pdf_key, page_count, fields_json FROM templates WHERE id = ? AND created_by = ?`,
         String(body.template_id || ''), user.email,
       );
       if (!tpl) return json({ error: 'Template not found' }, 404);
@@ -885,13 +1083,15 @@ export class PumasiSignService implements DurableObject {
       const now = new Date().toISOString();
       const isDraft = Boolean(body.draft);
       const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
+      const tplPdf = await this.loadPdf(tpl.pdf_key, tpl.pdf_blob);
+      const pdfKey = tplPdf ? await this.storePdf('originals', id, tplPdf) : null;
       this.sql.exec(
-        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, original_pdf_key, page_count, template_id,
                                   reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id, crypto.randomUUID().slice(0, 8),
         String(body.title || tpl.name).slice(0, 200), body.message ?? null, user.email,
-        isDraft ? 'draft' : 'pending', tpl.pdf_blob, tpl.page_count || 1, tpl.id,
+        isDraft ? 'draft' : 'pending', pdfKey ? null : tplPdf, pdfKey, tpl.page_count || 1, tpl.id,
         body.reminders_enabled === false ? 0 : 1, Number(body.reminder_interval_days) || 3,
         body.expires_at ?? null, now, now,
       );
@@ -982,9 +1182,10 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (method === 'GET' && action === 'pdf') {
-        const pdfData = sub.completed_pdf_blob || sub.original_pdf_blob;
+        const pdfData = (await this.loadPdf(sub.completed_pdf_key, sub.completed_pdf_blob))
+          ?? (await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob));
         if (!pdfData) return json({ error: 'PDF content not available' }, 404);
-        return new Response(pdfData, {
+        return new Response(pdfData.buffer as ArrayBuffer, {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `inline; filename="${String(sub.title).replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`,
@@ -1007,6 +1208,13 @@ export class PumasiSignService implements DurableObject {
 
       if (method === 'DELETE' && !action) {
         if (sub.status !== 'draft') return json({ error: 'Only drafts can be deleted' }, 409);
+        for (const key of [sub.original_pdf_key, sub.completed_pdf_key]) {
+          if (key) await this.docs()?.deleteDocument(String(key)).catch(() => {});
+        }
+        if (sub.template_id) {
+          const t = this.one<any>(`SELECT pdf_key FROM templates WHERE id = ? AND is_adhoc = 1`, sub.template_id);
+          if (t?.pdf_key) await this.docs()?.deleteDocument(String(t.pdf_key)).catch(() => {});
+        }
         this.sql.exec(`DELETE FROM submission_fields WHERE submission_id = ?`, sub.id);
         this.sql.exec(`DELETE FROM submitters WHERE submission_id = ?`, sub.id);
         this.sql.exec(`DELETE FROM audit_events WHERE submission_id = ?`, sub.id);
@@ -1047,12 +1255,15 @@ export class PumasiSignService implements DurableObject {
 
       if (method === 'POST' && action === 'copy') {
         const newId = `sub-${crypto.randomUUID().slice(0, 10)}`;
+        // Each envelope owns its bytes — a shared R2 key would be deleted with either copy.
+        const srcPdf = await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob);
+        const newKey = srcPdf ? await this.storePdf('originals', newId, srcPdf) : null;
         this.sql.exec(
-          `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+          `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, original_pdf_key, page_count, template_id,
                                     reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
-           SELECT ?, ?, title, message, created_by, 'draft', original_pdf_blob, page_count, template_id,
+           SELECT ?, ?, title, message, created_by, 'draft', ?, ?, page_count, template_id,
                   reminders_enabled, reminder_interval_days, NULL, ?, ? FROM submissions WHERE id = ?`,
-          newId, crypto.randomUUID().slice(0, 8), now, now, sub.id,
+          newId, crypto.randomUUID().slice(0, 8), newKey ? null : srcPdf, newKey, now, now, sub.id,
         );
         const idMap = new Map<string, string>();
         for (const s of this.all<any>(`SELECT * FROM submitters WHERE submission_id = ?`, sub.id)) {
@@ -1134,6 +1345,9 @@ export class PumasiSignService implements DurableObject {
           sub.email,
           `Your verification code for "${submission.title}"`,
           `Your verification code is: ${issued.code}\n\nEnter it on the signing page to open the document. It expires in ${CODE_TTL_MIN} minutes.\n\n— Pumasi Sign`,
+          this.mailHtml('Your verification code', [
+            `Enter this code on the signing page to open "${submission.title}". It expires in ${CODE_TTL_MIN} minutes.`,
+          ], { code: issued.code }),
         );
         if (!ok) return json({ error: 'Could not send the verification email. Try again shortly.' }, 502);
         return json({ ok: true });
@@ -1301,11 +1515,13 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (!this.authorizedForSubmission(req, targetId)) return json({ error: 'Not found' }, 404);
-      const row = this.one<any>(`SELECT title, original_pdf_blob, completed_pdf_blob FROM submissions WHERE id = ?`, targetId);
+      const row = this.one<any>(`SELECT title, original_pdf_blob, original_pdf_key, completed_pdf_blob, completed_pdf_key FROM submissions WHERE id = ?`, targetId);
       if (!row) return json({ error: 'Not found' }, 404);
-      const pdf = kind === 'signed-pdf' ? row.completed_pdf_blob : row.original_pdf_blob;
+      const pdf = kind === 'signed-pdf'
+        ? await this.loadPdf(row.completed_pdf_key, row.completed_pdf_blob)
+        : await this.loadPdf(row.original_pdf_key, row.original_pdf_blob);
       if (!pdf) return json({ error: 'Not available' }, 404);
-      return new Response(pdf, {
+      return new Response(pdf.buffer as ArrayBuffer, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `${kind === 'signed-pdf' ? 'attachment' : 'inline'}; filename="${String(row.title).replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`,
@@ -1320,9 +1536,10 @@ export class PumasiSignService implements DurableObject {
   /** All signed: stamp, certify, store, notify everyone (CCs included). */
   private async finalize(submissionId: string, now: string): Promise<void> {
     const sub = this.one<any>(
-      `SELECT id, public_uid, title, created_by, original_pdf_blob FROM submissions WHERE id = ?`, submissionId,
+      `SELECT id, public_uid, title, created_by, original_pdf_blob, original_pdf_key FROM submissions WHERE id = ?`, submissionId,
     );
     if (!sub) return;
+    const originalPdf = await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob);
 
     const allSubmitters: SignerInfo[] = this.all<any>(
       `SELECT id, name, email, role, signed_at, ip_address, user_agent, signature_blob FROM submitters WHERE submission_id = ? AND is_cc = 0`,
@@ -1349,18 +1566,19 @@ export class PumasiSignService implements DurableObject {
       value: f.type === 'label' ? (f.default_value ?? f.value ?? '') : (f.value ?? ''),
     }));
 
-    if (sub.original_pdf_blob) {
+    if (originalPdf) {
       const stampRes = await stampAndCertifyPdf({
-        originalPdfBytes: new Uint8Array(sub.original_pdf_blob),
+        originalPdfBytes: originalPdf,
         fields: allFields,
         signers: allSubmitters,
         envelopeUid: sub.public_uid,
         documentTitle: sub.title,
         completedAt: now,
       });
+      const completedKey = await this.storePdf('completed', submissionId, stampRes.stampedPdfBytes);
       this.sql.exec(
-        `UPDATE submissions SET status = 'completed', completed_at = ?, completed_pdf_blob = ?, updated_at = ? WHERE id = ?`,
-        now, stampRes.stampedPdfBytes, now, submissionId,
+        `UPDATE submissions SET status = 'completed', completed_at = ?, completed_pdf_blob = ?, completed_pdf_key = ?, updated_at = ? WHERE id = ?`,
+        now, completedKey ? null : stampRes.stampedPdfBytes, completedKey, now, submissionId,
       );
       this.audit(submissionId, 'completed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
         originalHash: stampRes.originalHash, completedHash: stampRes.completedHash,
@@ -1377,12 +1595,19 @@ export class PumasiSignService implements DurableObject {
       sub.created_by,
       `"${sub.title}" is fully signed`,
       `Everyone has signed "${sub.title}".\n\nDownload the executed document from your dashboard:\n${this.baseUrl()}/envelopes/${sub.id}\n\n— Pumasi Sign`,
+      this.mailHtml('Everyone has signed', [
+        `"${sub.title}" is complete. The executed document with its signature certificate is ready.`,
+      ], { cta: { label: 'Open the envelope', url: `${this.baseUrl()}/envelopes/${sub.id}` } }),
     );
     for (const s of this.all<any>(`SELECT name, email, token FROM submitters WHERE submission_id = ?`, submissionId)) {
       await this.mailOrLog(
         s.email,
         `"${sub.title}" is fully signed`,
         `Hello ${s.name},\n\nEveryone has signed "${sub.title}". You can retrieve the executed document any time:\n${this.baseUrl()}/sign/t/${s.token}\n\n— Pumasi Sign`,
+        this.mailHtml('Everyone has signed', [
+          `Hello ${s.name},`,
+          `Everyone has signed "${sub.title}". You can retrieve the executed document any time.`,
+        ], { cta: { label: 'Get the signed document', url: `${this.baseUrl()}/sign/t/${s.token}` } }),
       );
     }
   }

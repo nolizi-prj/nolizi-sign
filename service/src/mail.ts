@@ -87,26 +87,47 @@ export function mailConfigured(env: MailEnv): boolean {
 }
 
 /**
- * Send one plain-text email. Throws on failure — callers decide whether the
- * failure is fatal (login codes: yes) or logged (courtesy notifications: no).
+ * Send one email. Always carries a plain-text part; when `html` is given the
+ * message goes out as multipart/alternative — mailbox providers score a
+ * well-formed HTML+text pair better than bare plain text, which matters for
+ * a young domain's inbox placement. Throws on failure — callers decide
+ * whether that is fatal (login codes: yes) or logged (courtesy notices: no).
  */
 export async function sendMail(
   env: MailEnv,
-  msg: { to: string; subject: string; text: string },
+  msg: { to: string; subject: string; text: string; html?: string },
 ): Promise<void> {
   if (!env.GMAIL_SA_KEY || !env.MAIL_IMPERSONATE) {
     throw new Error('mail is not configured (GMAIL_SA_KEY / MAIL_IMPERSONATE)');
   }
   const fromName = env.MAIL_FROM_NAME || 'Pumasi Sign';
-  const raw = [
+  const headers = [
     `From: ${fromName} <${env.MAIL_IMPERSONATE}>`,
     `To: ${msg.to}`,
+    `Reply-To: ${env.MAIL_IMPERSONATE}`,
     `Subject: ${encodeSubject(msg.subject)}`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    '',
-    msg.text,
-  ].join('\r\n');
+  ];
+  let raw: string;
+  if (msg.html) {
+    const boundary = `=_pumasi_${crypto.randomUUID().replace(/-/g, '')}`;
+    raw = [
+      ...headers,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      msg.text,
+      `--${boundary}`,
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      msg.html,
+      `--${boundary}--`,
+    ].join('\r\n');
+  } else {
+    raw = [...headers, 'Content-Type: text/plain; charset=utf-8', '', msg.text].join('\r\n');
+  }
 
   const token = await accessToken(env.GMAIL_SA_KEY, env.MAIL_IMPERSONATE);
   const res = await fetch(SEND_URL, {

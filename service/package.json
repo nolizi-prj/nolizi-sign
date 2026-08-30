@@ -10,13 +10,13 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
-    "pdf-lib": "^1.17.1",
-    "@pdf-lib/fontkit": "^1.1.1"
+    "@pdf-lib/fontkit": "^1.1.1",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250800.0",
+    "@cloudflare/workers-types": "^5.20260830.1",
     "@types/node": "^24.13.3",
     "typescript": "^5.8.0",
-    "wrangler": "^3.109.0"
+    "wrangler": "^4.127.1"
   }
 }

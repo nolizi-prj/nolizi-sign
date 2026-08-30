@@ -81,6 +81,18 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
+    path: "/terms",
+    name: "terms",
+    component: () => import("../views/TermsView.vue"),
+    meta: { public: true },
+  },
+  {
+    path: "/privacy",
+    name: "privacy",
+    component: () => import("../views/PrivacyView.vue"),
+    meta: { public: true },
+  },
+  {
     path: "/signed-out",
     name: "signed-out",
     component: () => import("../views/SignedOutView.vue"),

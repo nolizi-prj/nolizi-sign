@@ -40,6 +40,28 @@ implements, verified against the real UI in prod (2026-08-30, second pass):
   per-submitter `resend`. Dashboard, envelope detail (activity timeline, form
   data), and the send wizard all render and flow against it.
 
+Third pass (2026-08-30, external-corp adoption), all verified live:
+
+- **OAuth sign-in** — Google (existing `pumasi-service` client, consent screen
+  already In production) and Microsoft (new multi-tenant Entra app
+  "Pumasi Sign", created via Graph; credentials in pumasi-secrets `sign.*`).
+  Verified with an external Gmail account end-to-end. Note:
+  `run_worker_first: ["/api/*"]` in the assets config is what lets a browser
+  *navigation* to `/api/...` reach the worker at all.
+- **Office → PDF** — Word/PowerPoint/Excel uploads convert through Microsoft
+  Graph (files transit the operator OneDrive, deleted after conversion) and
+  merge with PDFs/images in `merged-document`.
+- **R2 document storage** — bucket `pumasi-sign-documents`; new PDFs store as
+  R2 keys (`originals/`, `completed/`, `templates/`), legacy blob columns
+  still readable. Upload cap now 20MB (verified with a 7.3MB envelope,
+  stamped and sealed). R2 was activated on the account ($0 subscription).
+- **Deliverability** — multipart HTML+text mail with a branded shell,
+  Reply-To, and a spam-folder hint + resend button on the login page. The
+  first plain-text code email went to Gmail spam; the HTML version lands in
+  the inbox. SPF/DKIM/DMARC were already correct; reputation warms with use.
+- **/terms and /privacy** — real pages in booking's honest register,
+  including the Microsoft-conversion sub-processor disclosure.
+
 Still missing, in the order they block the product:
 
 1. **Template builder** — template CRUD + sharing + build view contract
@@ -48,11 +70,6 @@ Still missing, in the order they block the product:
 2. **Users/admin** — multi-seat orgs. Today one user = one workspace;
    recipients are a per-owner address book, not accounts.
 3. **Attachments** — attachment fields (`/sign/:id/attachment`), stored files.
-4. **Storage limits** — PDFs live as DO SQLite blobs; uploads are capped at
-   1.5MB (2MB/row ceiling). R2 binding exists (`storage/r2.ts`) but is
-   unwired. Move blobs to R2 before real documents arrive.
-5. **OAuth sign-in** — LoginView's Google/Microsoft buttons were removed until
-   the worker implements the endpoints; email codes are the only door.
 
 Single global DO (`pumasi-sign-main`) is fine at this scale; per-org sharding
 (the booking pattern) when usage justifies it.
