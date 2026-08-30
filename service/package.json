@@ -1,0 +1,22 @@
+{
+  "name": "@pumasi/sign-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/test/*.test.js",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "@pdf-lib/fontkit": "^1.1.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250800.0",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.8.0",
+    "wrangler": "^3.109.0"
+  }
+}
