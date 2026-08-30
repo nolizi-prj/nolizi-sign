@@ -20,6 +20,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { onBeforeRouteLeave, useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import PdfPage from "../components/PdfPage.vue";
+import PageThumbRail from "../components/PageThumbRail.vue";
 import FieldBox from "../components/FieldBox.vue";
 import FieldPropertiesPanel from "../components/FieldPropertiesPanel.vue";
 import { useFieldPlacement } from "../composables/useFieldPlacement";
@@ -210,17 +211,13 @@ const fieldsOnCurrentPage = computed<FieldDef[]>(
 
 /** Per-page field counts in one pass — the thumbnail rail reads this several
  *  times per thumbnail per render (and re-renders on every drag move). */
-const fieldCountByPage = computed<Map<number, number>>(() => {
-  const counts = new Map<number, number>();
+const fieldCounts = computed<number[]>(() => {
+  const counts: number[] = [];
   for (const field of template.value?.fields ?? []) {
-    counts.set(field.page, (counts.get(field.page) ?? 0) + 1);
+    counts[field.page] = (counts[field.page] ?? 0) + 1;
   }
   return counts;
 });
-
-function fieldCountOnPage(page: number): number {
-  return fieldCountByPage.value.get(page) ?? 0;
-}
 
 function onRendered(widthPx: number, heightPx: number): void {
   pageWidthPx.value = widthPx;
@@ -319,6 +316,22 @@ function deleteField(id: string): void {
   if (!template.value) return;
   template.value.fields = template.value.fields.filter((f) => f.id !== id);
   if (selectedFieldId.value === id) selectedFieldId.value = null;
+}
+
+/** Floating-toolbar Duplicate: same field, new id, nudged so both stay visible. */
+function duplicateField(id: string): void {
+  if (!template.value) return;
+  const source = template.value.fields.find((f) => f.id === id);
+  if (!source) return;
+  const copy: FieldDef = {
+    ...source,
+    id: crypto.randomUUID(),
+    x: Math.min(source.x + 0.02, 1 - source.w),
+    y: Math.min(source.y + 0.02, 1 - source.h),
+    options: source.options ? [...source.options] : undefined,
+  };
+  template.value.fields.push(copy);
+  selectedFieldId.value = copy.id;
 }
 
 // --- selected-field properties panel (DocuSign-style) -----------------------
@@ -489,29 +502,14 @@ async function goSend(): Promise<void> {
 
         <v-col cols="12" md="9">
           <div class="d-flex builder-canvas">
-            <nav v-if="template.page_count > 1" class="thumb-rail" aria-label="Pages">
-              <button
-                v-for="page in pageNumbers"
-                :key="page"
-                type="button"
-                class="thumb"
-                :class="{ on: page === currentPage }"
-                :aria-label="`Page ${page + 1}${fieldCountOnPage(page) > 0 ? `, ${fieldCountOnPage(page)} fields` : ''}`"
-                :aria-current="page === currentPage ? 'page' : undefined"
-                @click="currentPage = page"
-              >
-                <PdfPage v-if="pdfUrl" :src="pdfUrl" :page="page" />
-                <span class="thumb-label">
-                  {{ page + 1 }}
-                  <v-badge
-                    v-if="fieldCountOnPage(page) > 0"
-                    :content="fieldCountOnPage(page)"
-                    color="primary"
-                    inline
-                  />
-                </span>
-              </button>
-            </nav>
+            <PageThumbRail
+              v-if="pdfUrl"
+              :src="pdfUrl"
+              :page-count="template.page_count"
+              :current="currentPage"
+              :field-counts="fieldCounts"
+              @update:current="currentPage = $event"
+            />
 
             <div class="flex-grow-1 min-width-0" @pointerdown="selectedFieldId = null">
               <div class="d-flex align-center mb-2">
@@ -539,6 +537,7 @@ async function goSend(): Promise<void> {
                     @select="selectedFieldId = $event"
                     @update:field="updateField"
                     @delete="deleteField"
+                    @duplicate="duplicateField"
                   />
                 </div>
               </PdfPage>
@@ -607,45 +606,6 @@ async function goSend(): Promise<void> {
 
 .min-width-0 {
   min-width: 0;
-}
-
-.thumb-rail {
-  width: 74px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 80vh;
-  overflow-y: auto;
-  padding: 2px;
-}
-
-.thumb {
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 4px;
-  padding: 0;
-  background: #fff;
-  cursor: pointer;
-  overflow: hidden;
-  position: relative;
-}
-
-.thumb.on {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: 1px;
-}
-
-.thumb-label {
-  position: absolute;
-  bottom: 2px;
-  right: 4px;
-  font-size: 10px;
-  color: rgba(0, 0, 0, 0.6);
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 3px;
-  padding: 0 3px;
-  display: inline-flex;
-  align-items: center;
 }
 
 .placement-catcher {

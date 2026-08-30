@@ -163,6 +163,40 @@ function expiryHint(row: Row): string | null {
   if ((s.status !== "pending" && s.status !== "draft") || !s.expires_at) return null;
   return `Expires ${formatDate(s.expires_at)}`;
 }
+
+// --- download dialog (DocuSign-style "which files" picker) -------------------
+
+const downloadTarget = ref<SubmissionOut | null>(null);
+const dlDocument = ref(true);
+const dlCertificate = ref(true);
+
+function openDownload(submission: SubmissionOut): void {
+  dlDocument.value = true;
+  dlCertificate.value = submission.has_certificate;
+  downloadTarget.value = submission;
+}
+
+/** Same-origin attachment download without leaving the page. */
+function triggerDownload(url: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function startDownload(): Promise<void> {
+  const s = downloadTarget.value;
+  if (!s) return;
+  if (dlDocument.value) triggerDownload(`/api/files/signed-pdf/${s.id}`);
+  if (dlCertificate.value && s.has_certificate) {
+    // Browsers drop a second programmatic click fired in the same tick.
+    if (dlDocument.value) await new Promise((resolve) => setTimeout(resolve, 400));
+    triggerDownload(`/api/files/certificate/${s.id}`);
+  }
+  downloadTarget.value = null;
+}
 </script>
 
 <template>
@@ -279,9 +313,18 @@ function expiryHint(row: Row): string | null {
 
         <v-card-text v-if="!loading && filteredRows.length === 0" class="empty-state">
           <v-icon icon="mdi-email-open-outline" size="40" class="mb-2" aria-hidden="true" />
-          <p class="mb-0">
+          <p class="mb-2">
             {{ filtersActive ? "Nothing matches your search or filters." : EMPTY_TEXT[view] }}
           </p>
+          <v-btn
+            v-if="!filtersActive && canSend && ['inbox', 'drafts', 'sent', 'completed'].includes(view)"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-send"
+            :to="{ name: 'send' }"
+          >
+            New envelope
+          </v-btn>
         </v-card-text>
 
         <v-data-table
@@ -372,20 +415,17 @@ function expiryHint(row: Row): string | null {
             >
               Sign now
             </v-btn>
-            <v-tooltip v-else-if="item.submission.status === 'completed'" text="Signed PDF">
-              <template #activator="{ props: tipProps }">
-                <v-btn
-                  icon="mdi-file-pdf-box"
-                  size="small"
-                  variant="text"
-                  color="primary"
-                  :href="`/api/files/signed-pdf/${item.submission.id}`"
-                  target="_blank"
-                  :aria-label="`Signed PDF for ${item.submission.title}`"
-                  v-bind="tipProps"
-                />
-              </template>
-            </v-tooltip>
+            <v-btn
+              v-else-if="item.submission.status === 'completed'"
+              size="small"
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-download"
+              :aria-label="`Download ${item.submission.title}`"
+              @click="openDownload(item.submission)"
+            >
+              Download
+            </v-btn>
             <v-tooltip text="History & details">
               <template #activator="{ props: tipProps }">
                 <v-btn
@@ -460,6 +500,44 @@ function expiryHint(row: Row): string | null {
         </v-data-table>
       </div>
     </div>
+
+    <!-- Download picker: which files, DocuSign-style. Combined-PDF and zip
+         delivery are Phase 3 (docs/ux/similar-ux-plan.md). -->
+    <v-dialog
+      :model-value="downloadTarget !== null"
+      max-width="440"
+      @update:model-value="(v: boolean) => { if (!v) downloadTarget = null }"
+    >
+      <v-card v-if="downloadTarget">
+        <v-card-title>Download "{{ downloadTarget.title }}"</v-card-title>
+        <v-card-text class="pb-0">
+          <v-checkbox v-model="dlDocument" label="Signed document (PDF)" density="compact" hide-details />
+          <v-checkbox
+            v-model="dlCertificate"
+            label="Certificate of completion (PDF)"
+            density="compact"
+            hide-details
+            :disabled="!downloadTarget.has_certificate"
+          />
+          <p v-if="!downloadTarget.has_certificate" class="text-caption text-medium-emphasis mt-1 mb-0">
+            This envelope's certificate page is inside the signed PDF itself.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="downloadTarget = null">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            prepend-icon="mdi-download"
+            :disabled="!dlDocument && !(dlCertificate && downloadTarget.has_certificate)"
+            @click="startDownload"
+          >
+            Download
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
