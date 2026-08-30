@@ -4,13 +4,17 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "routes": [{ "pattern": "sign.pumasi.ai", "custom_domain": true }],
-  "r2_buckets": [
-    {
-      "binding": "DOCUMENTS",
-      "bucket_name": "pumasi-sign-documents"
-    }
+  "durable_objects": {
+    "bindings": [
+      { "name": "SIGN_SERVICE", "class_name": "PumasiSignService" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PumasiSignService"] }
   ],
+  "observability": { "enabled": true },
   "vars": {
     "BASE_URL": "https://sign.pumasi.ai",
     "GITHUB_FEEDBACK_REPO": "pumasi-ai/pumasi-sign"
