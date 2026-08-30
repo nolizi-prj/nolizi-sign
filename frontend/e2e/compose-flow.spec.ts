@@ -113,7 +113,7 @@ test("admin sends a one-off envelope built from multiple files merged in order",
 
     // sample.pdf has 2 pages; two copies merged → 4 pages.
     await waitForPdfRendered(admin);
-    await expect(admin.getByText("Page 1 / 4")).toBeVisible();
+    await expect(admin.getByText("Page 1 of 4")).toBeVisible();
   });
 
   await test.step("place a field and send", async () => {

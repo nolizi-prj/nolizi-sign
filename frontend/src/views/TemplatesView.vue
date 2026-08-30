@@ -5,7 +5,7 @@
  * Send / Edit fields / Archive actions, plus New template.
  */
 import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
@@ -15,6 +15,7 @@ import type { TemplateOut } from "../types";
 const auth = useAuthStore();
 const ui = useUiStore();
 const router = useRouter();
+const route = useRoute();
 
 const loading = ref(true);
 const errorMessage = ref<string | null>(null);
@@ -33,7 +34,11 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  // Dashboard hero's "Create a template" deep-links straight into the dialog.
+  if (route.query.new === "1") newTemplateDialog.value = true;
+  void load();
+});
 
 const archiveTarget = ref<TemplateOut | null>(null);
 const archiving = ref(false);

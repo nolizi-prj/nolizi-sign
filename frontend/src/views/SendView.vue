@@ -18,7 +18,7 @@
  * EnvelopeComposeView established, consolidated into this wizard).
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import axios from "axios";
 import http, { extractBlobError, extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
@@ -28,6 +28,7 @@ import { roleColor, templateRoles } from "../utils/roleColors";
 import { UPLOAD_ACCEPT } from "../utils/uploads";
 import { useFieldPlacement } from "../composables/useFieldPlacement";
 import PdfPage from "../components/PdfPage.vue";
+import PageThumbRail from "../components/PageThumbRail.vue";
 import FieldBox from "../components/FieldBox.vue";
 import FieldPropertiesPanel from "../components/FieldPropertiesPanel.vue";
 import NewTemplateDialog from "../components/NewTemplateDialog.vue";
@@ -35,6 +36,7 @@ import { FIELD_TYPES, type FieldDef, type SubmissionOut, type TemplateOut, type 
 
 const props = defineProps<{ templateId?: string; draftId?: string }>();
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 const ui = useUiStore();
 
@@ -340,6 +342,28 @@ function canProceedFrom(current: number): boolean {
   return true;
 }
 
+// --- self-sign: "I'm the only signer" ---------------------------------------
+
+/** DocuSign-style self-sign short-circuit (one-off mode only): the recipient
+ *  list collapses to just the sender, and after Send the wizard jumps
+ *  straight into the signing view instead of the envelope detail page.
+ *  Preset via the dashboard hero's "Sign a document" (`/send?self=1`). */
+const onlySigner = ref(false);
+
+function applyOnlySigner(): void {
+  if (!auth.me) return;
+  // Drop extra signer rows through removeRecipient so their fields go with
+  // them and remaining roles re-pack to signer-N (a reopened multi-signer
+  // draft is the case where extras exist).
+  for (let i = adhocRecipients.value.length - 1; i >= 1; i--) removeRecipient(i);
+  adhocRecipients.value[0] = auth.me.id;
+  signInOrder.value = false;
+}
+
+watch([onlySigner, mode, () => auth.me], () => {
+  if (onlySigner.value && mode.value === "adhoc") applyOnlySigner();
+});
+
 // --- ad-hoc recipient management --------------------------------------------
 
 function addRecipient(): void {
@@ -370,6 +394,13 @@ const pageWidthPx = ref(0);
 const pageHeightPx = ref(0);
 
 const adhocFieldsOnPage = computed(() => adhocFields.value.filter((f) => f.page === adhocPage.value));
+
+/** Per-page field counts for the thumbnail rail's badges. */
+const adhocFieldCounts = computed<number[]>(() => {
+  const counts: number[] = [];
+  for (const f of adhocFields.value) counts[f.page] = (counts[f.page] ?? 0) + 1;
+  return counts;
+});
 
 const placementRoleItems = computed(() =>
   adhocRecipients.value.map((_, i) => ({ title: adhocRecipientName(i), value: adhocRole(i) })),
@@ -687,6 +718,21 @@ function deleteAdhocField(id: string): void {
   if (selectedFieldId.value === id) selectedFieldId.value = null;
 }
 
+/** Floating-toolbar Duplicate: same field, new id, nudged so both stay visible. */
+function duplicateAdhocField(id: string): void {
+  const source = adhocFields.value.find((f) => f.id === id);
+  if (!source) return;
+  const copy: FieldDef = {
+    ...source,
+    id: crypto.randomUUID(),
+    x: Math.min(source.x + 0.02, 1 - source.w),
+    y: Math.min(source.y + 0.02, 1 - source.h),
+    options: source.options ? [...source.options] : undefined,
+  };
+  adhocFields.value.push(copy);
+  selectedFieldId.value = copy.id;
+}
+
 // --- selected-field properties panel (DocuSign-style) -----------------------
 
 const selectedFieldId = ref<string | null>(null);
@@ -781,7 +827,10 @@ async function loadDraft(draftId: string): Promise<void> {
   step.value = 1;
 }
 
-onMounted(load);
+onMounted(async () => {
+  await load();
+  if (route.query.self === "1" && !props.draftId && !props.templateId) onlySigner.value = true;
+});
 
 // --- send -------------------------------------------------------------------
 
@@ -858,6 +907,11 @@ async function send(asDraft = false): Promise<void> {
     }
     if (asDraft) {
       ui.toast("Draft saved — send it whenever you're ready.");
+    } else if (onlySigner.value && mode.value === "adhoc" && created.my_submitter_id != null) {
+      // Self-sign: no reason to make the sender find their own email.
+      ui.toast("Document ready — sign it now.");
+      await router.push({ name: "sign", params: { submitterId: String(created.my_submitter_id) } });
+      return;
     } else {
       ui.toast(
         signInOrder.value
@@ -1098,7 +1152,21 @@ async function send(asDraft = false): Promise<void> {
             >
               {{ recipientError }}
             </v-alert>
-            <div class="d-flex align-center mb-2">
+            <v-checkbox
+              v-model="onlySigner"
+              label="I'm the only signer"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-1"
+            />
+            <p v-if="onlySigner" class="text-body-2 text-medium-emphasis mb-2">
+              <v-chip size="small" variant="tonal" color="primary" prepend-icon="mdi-account-check-outline" class="mr-2">
+                You
+              </v-chip>
+              {{ auth.me?.name }} — place your own fields next, then sign right away.
+            </p>
+            <div v-if="!onlySigner" class="d-flex align-center mb-2">
               <v-spacer />
               <v-switch
                 v-model="signInOrder"
@@ -1112,7 +1180,7 @@ async function send(asDraft = false): Promise<void> {
               The number sets each recipient's turn — lower numbers go first, and recipients with the same
               number are reached together.
             </p>
-            <div v-for="(userId, i) in adhocRecipients" :key="i" class="d-flex align-start signer-row mb-2">
+            <div v-for="(userId, i) in adhocRecipients" v-show="!onlySigner" :key="i" class="d-flex align-start signer-row mb-2">
               <v-text-field
                 v-if="signInOrder"
                 v-model.number="adhocOrderNums[i]"
@@ -1149,8 +1217,16 @@ async function send(asDraft = false): Promise<void> {
                 @click="removeRecipient(i)"
               />
             </div>
-            <v-btn variant="text" color="primary" prepend-icon="mdi-plus" @click="addRecipient">Add signer</v-btn>
-            <v-textarea v-model="message" label="Message to signers (optional)" rows="3" class="mt-4" />
+            <v-btn v-if="!onlySigner" variant="text" color="primary" prepend-icon="mdi-plus" @click="addRecipient">
+              Add signer
+            </v-btn>
+            <v-textarea
+              v-if="!onlySigner"
+              v-model="message"
+              label="Message to signers (optional)"
+              rows="3"
+              class="mt-4"
+            />
           </template>
 
           <!-- CC rows (both modes): a person + order number who receives a copy,
@@ -1294,23 +1370,19 @@ async function send(asDraft = false): Promise<void> {
           </p>
 
           <div class="d-flex placement-layout">
+            <PageThumbRail
+              v-if="adhocPdfUrl"
+              :src="adhocPdfUrl"
+              :page-count="adhocPageCount"
+              :current="adhocPage"
+              :field-counts="adhocFieldCounts"
+              @update:current="adhocPage = $event"
+            />
             <div class="flex-grow-1 placement-page" @pointerdown="selectedFieldId = null">
               <div class="d-flex align-center mb-2">
-                <v-btn
-                  icon="mdi-chevron-left"
-                  size="small"
-                  :disabled="adhocPage === 0"
-                  aria-label="Previous page"
-                  @click="adhocPage--"
-                />
-                <span class="mx-2">Page {{ adhocPage + 1 }} / {{ adhocPageCount || "?" }}</span>
-                <v-btn
-                  icon="mdi-chevron-right"
-                  size="small"
-                  :disabled="adhocPage >= adhocPageCount - 1"
-                  aria-label="Next page"
-                  @click="adhocPage++"
-                />
+                <span class="text-body-2 text-medium-emphasis">
+                  Page {{ adhocPage + 1 }} of {{ adhocPageCount || "?" }}
+                </span>
               </div>
 
               <PdfPage
@@ -1341,6 +1413,7 @@ async function send(asDraft = false): Promise<void> {
                     @select="selectedFieldId = $event"
                     @update:field="updateAdhocField"
                     @delete="deleteAdhocField"
+                    @duplicate="duplicateAdhocField"
                   />
                 </div>
               </PdfPage>

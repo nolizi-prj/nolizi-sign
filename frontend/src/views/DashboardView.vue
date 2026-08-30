@@ -14,6 +14,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
+import { useBrandingStore } from "../store/branding";
 import { useUiStore } from "../store/ui";
 import { displayRole, formatDate } from "../utils/labels";
 import { actionRequired } from "../utils/envelopes";
@@ -21,6 +22,7 @@ import EnvelopeBrowser from "../components/EnvelopeBrowser.vue";
 import type { SubmissionOut, TemplateOut } from "../types";
 
 const auth = useAuthStore();
+const branding = useBrandingStore();
 const ui = useUiStore();
 const router = useRouter();
 
@@ -218,11 +220,37 @@ async function confirmDeleteDraft(): Promise<void> {
 
     <v-progress-linear v-if="loading" indeterminate class="mb-4" />
 
-    <!-- Greeting + personal queue -->
-    <div class="mb-2 mt-2">
+    <!-- Hero band: greeting, queue summary, and the three quick actions
+         (DocuSign-style home; see docs/ux/incumbent-ux-spec.md §2) -->
+    <v-sheet
+      class="hero mb-4 mt-2 pa-6"
+      rounded="lg"
+      :style="{ backgroundColor: branding.primaryColor || '#1A56DB' }"
+    >
       <h1 class="text-h5">{{ greeting }}{{ firstName ? `, ${firstName}` : "" }}</h1>
-      <p class="text-medium-emphasis mb-0">{{ queueSubtitle }}</p>
-    </div>
+      <p class="hero-subtitle mb-0">{{ queueSubtitle }}</p>
+      <div v-if="auth.canSend" class="hero-actions mt-4">
+        <v-btn class="hero-btn" variant="flat" prepend-icon="mdi-send" :to="{ name: 'send' }">
+          Get signatures
+        </v-btn>
+        <v-btn
+          class="hero-btn"
+          variant="outlined"
+          prepend-icon="mdi-draw-pen"
+          :to="{ name: 'send', query: { self: '1' } }"
+        >
+          Sign a document
+        </v-btn>
+        <v-btn
+          class="hero-btn"
+          variant="outlined"
+          prepend-icon="mdi-file-document-plus-outline"
+          :to="{ name: 'templates', query: { new: '1' } }"
+        >
+          Create a template
+        </v-btn>
+      </div>
+    </v-sheet>
 
     <v-row v-if="waitingForSignature.length > 0" class="mb-2 mt-1">
       <v-col v-for="submission in waitingForSignature" :key="submission.id" cols="12" md="6">
@@ -344,6 +372,31 @@ async function confirmDeleteDraft(): Promise<void> {
 <style scoped>
 .dashboard {
   max-width: 1400px;
+}
+
+/* The hero sits on the branding accent color, so its text is always white;
+   the primary action is white-on-accent, secondaries are outlined white. */
+.hero {
+  color: #ffffff;
+}
+
+.hero-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hero-btn {
+  color: #ffffff;
+}
+
+.hero-btn.v-btn--variant-flat {
+  background-color: #ffffff;
+  color: rgba(0, 0, 0, 0.87);
 }
 
 .queue-card {

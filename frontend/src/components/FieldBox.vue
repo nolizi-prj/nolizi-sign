@@ -7,10 +7,12 @@
  * (fields are a prop, not v-model, so the parent owns the source of truth).
  *
  * DocuSign-style split: the box itself is display-only (name label, drag,
- * resize, select) — all property editing (required, font size, prefill /
- * label text, delete) lives in FieldPropertiesPanel, which the parent shows
- * for the selected field. Controls used to render inside the box and became
- * an unreadable jumble for small fields.
+ * resize, select) — full property editing (font size, prefill / label text,
+ * validation) lives in FieldPropertiesPanel, which the parent shows for the
+ * selected field. Controls used to render inside the box and became an
+ * unreadable jumble for small fields; the selected box instead gets a
+ * fixed-size floating mini-toolbar *below* it (required / duplicate /
+ * delete), which never scales with the field.
  */
 import { computed } from "vue";
 import type { FieldDef } from "../types";
@@ -31,7 +33,13 @@ const emit = defineEmits<{
   "update:field": [field: FieldDef];
   select: [id: string];
   delete: [id: string];
+  /** Ask the parent to place a copy of this field (new id, slight offset). */
+  duplicate: [id: string];
 }>();
+
+function toggleRequired(): void {
+  emit("update:field", { ...props.field, required: !props.field.required });
+}
 
 const MIN_SIZE = 0.02;
 
@@ -142,6 +150,40 @@ function onKeydown(event: KeyboardEvent): void {
       @pointerup.stop="onResizePointerUp"
       @pointercancel.stop="onResizePointerUp"
     />
+    <!-- Floating mini-toolbar (DocuSign-style): fixed size below the box, so
+         it stays usable however small the field is. pointerdown must not
+         bubble into the drag handler above. -->
+    <div v-if="selected" class="field-toolbar" @pointerdown.stop>
+      <button
+        v-if="field.type !== 'label'"
+        type="button"
+        class="field-toolbar-btn"
+        :class="{ active: field.required }"
+        :aria-label="field.required ? 'Make optional' : 'Make required'"
+        :title="field.required ? 'Required — click to make optional' : 'Optional — click to make required'"
+        @click.stop="toggleRequired"
+      >
+        <v-icon :icon="field.required ? 'mdi-asterisk' : 'mdi-asterisk-circle-outline'" size="14" />
+      </button>
+      <button
+        type="button"
+        class="field-toolbar-btn"
+        aria-label="Duplicate field"
+        title="Duplicate"
+        @click.stop="emit('duplicate', field.id)"
+      >
+        <v-icon icon="mdi-content-copy" size="14" />
+      </button>
+      <button
+        type="button"
+        class="field-toolbar-btn"
+        aria-label="Delete field"
+        title="Delete"
+        @click.stop="emit('delete', field.id)"
+      >
+        <v-icon icon="mdi-delete-outline" size="14" />
+      </button>
+    </div>
   </div>
 </template>
 
@@ -189,6 +231,43 @@ function onKeydown(event: KeyboardEvent): void {
   font-weight: 700;
   line-height: 1.2;
   pointer-events: none;
+}
+
+.field-toolbar {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgb(var(--v-theme-surface));
+  color: rgba(var(--v-theme-on-surface), 0.8);
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  z-index: 7;
+  cursor: default;
+}
+
+.field-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.field-toolbar-btn:hover {
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.field-toolbar-btn.active {
+  color: rgb(var(--v-theme-primary));
 }
 
 .field-resize-handle {
