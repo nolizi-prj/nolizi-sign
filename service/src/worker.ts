@@ -15,6 +15,9 @@ export interface Env {
   BASE_URL?: string;
   GITHUB_FEEDBACK_TOKEN?: string;
   GITHUB_FEEDBACK_REPO?: string;
+  GMAIL_SA_KEY?: string;
+  MAIL_IMPERSONATE?: string;
+  MAIL_FROM_NAME?: string;
   MS_GRAPH_TENANT_ID?: string;
   MS_GRAPH_CLIENT_ID?: string;
   MS_GRAPH_CLIENT_SECRET?: string;

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign — Universal Public Authentication (Sign In & Sign Up).
- * Supports Google SSO, Microsoft 365, and passwordless email verification.
+ * Pumasi Sign — public authentication (sign in & sign up), passwordless:
+ * a 6-digit code emailed to the address. Google/Microsoft SSO will return
+ * when the worker implements the OAuth endpoints.
  */
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import http, { loginRedirectUrl } from "../utils/http";
+import http from "../utils/http";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
 
@@ -22,16 +23,11 @@ const step = ref<"email" | "code">("email");
 const sending = ref(false);
 const verifying = ref(false);
 const error = ref("");
-const demoCodeHint = ref("");
 
 const next = computed(() => {
   const raw = route.query.next;
   return typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
 });
-
-const msSsoUrl = computed(() => loginRedirectUrl(next.value));
-// Google OAuth endpoint
-const googleSsoUrl = computed(() => `/api/auth/oauth/google?next=${encodeURIComponent(next.value)}`);
 
 async function requestCode() {
   if (!email.value.trim() || !email.value.includes("@")) {
@@ -40,18 +36,13 @@ async function requestCode() {
   }
   sending.value = true;
   error.value = "";
-  demoCodeHint.value = "";
 
   try {
-    const { data } = await http.post<any>("/auth/login/request", {
+    await http.post<any>("/auth/login/request", {
       email: email.value.trim(),
       name: name.value.trim() || undefined,
     }, { skipAuthRedirect: true });
 
-    if (data.demoCode) {
-      demoCodeHint.value = data.demoCode;
-      code.value = data.demoCode; // Auto-fill for instant frictionless sign-in
-    }
     step.value = "code";
     ui.toast("Verification code sent to your email!");
   } catch (err: any) {
@@ -121,40 +112,8 @@ function resetToEmail() {
         {{ error }}
       </v-alert>
 
-      <!-- Step 1: OAuth + Email Input -->
+      <!-- Step 1: Email Input -->
       <div v-if="step === 'email'">
-        <!-- Social OAuth Sign-In Buttons -->
-        <div class="d-flex flex-column gap-2 mb-4">
-          <v-btn
-            color="primary"
-            variant="flat"
-            size="large"
-            block
-            :href="msSsoUrl"
-            prepend-icon="mdi-microsoft"
-            class="mb-2"
-          >
-            Continue with Microsoft 365
-          </v-btn>
-
-          <v-btn
-            variant="outlined"
-            size="large"
-            block
-            :href="googleSsoUrl"
-            prepend-icon="mdi-google"
-            class="border"
-          >
-            Continue with Google
-          </v-btn>
-        </div>
-
-        <div class="d-flex align-center my-4">
-          <v-divider />
-          <span class="px-3 text-caption text-medium-emphasis">or continue with email</span>
-          <v-divider />
-        </div>
-
         <!-- Name field for Sign-Up mode -->
         <v-text-field
           v-if="activeTab === 'signup'"
@@ -196,9 +155,6 @@ function resetToEmail() {
           <v-icon icon="mdi-email-check-outline" color="primary" size="40" class="mb-2" />
           <p class="text-body-2 mb-1">
             We sent a 6-digit verification code to <strong>{{ email }}</strong>.
-          </p>
-          <p v-if="demoCodeHint" class="text-caption text-primary font-weight-bold">
-            Demo Code: {{ demoCodeHint }}
           </p>
         </div>
 
