@@ -10,6 +10,8 @@ export { PumasiSignService };
 
 export interface Env {
   SIGN_SERVICE: DurableObjectNamespace;
+  ASSETS?: Fetcher;
+  DOCUMENTS?: any; // R2 Bucket binding
   BASE_URL?: string;
   GITHUB_FEEDBACK_TOKEN?: string;
   GITHUB_FEEDBACK_REPO?: string;
@@ -121,6 +123,11 @@ export default {
       const id = env.SIGN_SERVICE.idFromName('pumasi-sign-main');
       const stub = env.SIGN_SERVICE.get(id);
       return stub.fetch(req);
+    }
+
+    // 5. Serve Frontend Static Assets (Vue 3 SPA)
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(req);
     }
 
     return new Response('Pumasi Sign Edge Service', { status: 200 });
