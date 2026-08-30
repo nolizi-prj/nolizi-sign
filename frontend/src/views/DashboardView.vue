@@ -18,13 +18,42 @@ import { useBrandingStore } from "../store/branding";
 import { useUiStore } from "../store/ui";
 import { displayRole, formatDate } from "../utils/labels";
 import { actionRequired } from "../utils/envelopes";
+import { useDraftHandoffStore } from "../store/draftHandoff";
 import EnvelopeBrowser from "../components/EnvelopeBrowser.vue";
 import type { SubmissionOut, TemplateOut } from "../types";
 
 const auth = useAuthStore();
 const branding = useBrandingStore();
 const ui = useUiStore();
+const draftHandoff = useDraftHandoffStore();
 const router = useRouter();
+
+const isDragging = ref(false);
+const heroFileInputRef = ref<HTMLInputElement | null>(null);
+
+function onHeroFileDrop(e: DragEvent): void {
+  isDragging.value = false;
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  processSelectedFile(file);
+}
+
+function onHeroFileChosen(e: Event): void {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  processSelectedFile(file);
+}
+
+function processSelectedFile(file: File): void {
+  if (!file.name.match(/\.(pdf|docx|doc|txt)$/i)) {
+    ui.toast("Please select a PDF or Word document.");
+    return;
+  }
+  draftHandoff.setFile(file);
+  void router.push({ name: "send" });
+}
 
 const loading = ref(true);
 const errorMessage = ref<string | null>(null);
@@ -250,6 +279,32 @@ async function confirmDeleteDraft(): Promise<void> {
           Create a template
         </v-btn>
       </div>
+
+      <!-- DocuSign-Style Drag & Drop Hero Zone -->
+      <div
+        v-if="auth.canSend"
+        class="hero-dropzone mt-4"
+        :class="{ 'dropzone-active': isDragging }"
+        @dragover.prevent="isDragging = true"
+        @dragleave.prevent="isDragging = false"
+        @drop.prevent="onHeroFileDrop"
+        @click="heroFileInputRef?.click()"
+      >
+        <input
+          ref="heroFileInputRef"
+          type="file"
+          accept=".pdf,.docx,.doc,.txt"
+          style="display: none;"
+          @change="onHeroFileChosen"
+        />
+        <div class="d-flex align-center justify-center ga-3">
+          <v-icon icon="mdi-cloud-upload-outline" size="28" class="dropzone-icon" />
+          <div class="text-left">
+            <span class="font-weight-bold d-block text-body-2">Drop your document here to start signing</span>
+            <span class="text-caption opacity-80">Supports PDF, DOCX, DOC files (or click to browse)</span>
+          </div>
+        </div>
+      </div>
     </v-sheet>
 
     <v-row v-if="waitingForSignature.length > 0" class="mb-2 mt-1">
@@ -399,15 +454,25 @@ async function confirmDeleteDraft(): Promise<void> {
   color: rgba(0, 0, 0, 0.87);
 }
 
-.queue-card {
-  border-color: rgba(180, 83, 9, 0.4);
+.hero-dropzone {
+  border: 2px dashed rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
 }
 
-.empty-state {
-  text-align: center;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  padding-top: 24px;
-  padding-bottom: 24px;
+.hero-dropzone:hover,
+.dropzone-active {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: #ffffff;
+  transform: translateY(-1px);
 }
 
+.dropzone-icon {
+  color: #ffffff;
+}
 </style>

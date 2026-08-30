@@ -773,6 +773,42 @@ async function decline(): Promise<void> {
         {{ errorMessage }}
       </v-alert>
 
+      <!-- Floating DocuSign-Style Guided Tag -->
+      <div v-if="tourFields.length > 0" class="pf-guided-tag-wrapper">
+        <button
+          type="button"
+          class="pf-guided-tag"
+          :class="{
+            'pf-tag-start': completedCount === 0 && !canFinish,
+            'pf-tag-next': completedCount > 0 && !canFinish,
+            'pf-tag-finish': canFinish,
+          }"
+          :title="canFinish ? 'Review and finish document' : (completedCount === 0 ? 'Click to start signing' : 'Next required field')"
+          aria-label="Guided signing navigation"
+          @click="canFinish ? openReview() : (completedCount === 0 ? startTour() : goNext())"
+        >
+          <template v-if="completedCount === 0 && !canFinish">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="mr-1">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <span>START</span>
+          </template>
+          <template v-else-if="!canFinish">
+            <span>NEXT</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" class="mx-1">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <span class="pf-tag-badge" aria-live="polite">{{ missingRequiredCount }}</span>
+          </template>
+          <template v-else>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="mr-1">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+            <span>REVIEW & FINISH</span>
+          </template>
+        </button>
+      </div>
+
       <div v-for="page in pageNumbers" :key="page" class="page-wrapper mb-6">
         <PdfPage
           v-if="pdfUrl"
@@ -1234,5 +1270,89 @@ async function decline(): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Floating Guided Tag */
+.pf-guided-tag-wrapper {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 700;
+}
+
+.pf-guided-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.pf-guided-tag:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.pf-guided-tag:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.pf-tag-start {
+  background: linear-gradient(135deg, #D97706 0%, #B45309 100%);
+  color: #ffffff;
+  animation: pf-pulse 2.2s infinite ease-in-out;
+}
+
+.pf-tag-next {
+  background: linear-gradient(135deg, #1A56DB 0%, #1E40AF 100%);
+  color: #ffffff;
+}
+
+.pf-tag-finish {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff;
+}
+
+.pf-tag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+  padding: 1px 7px;
+  font-size: 0.76rem;
+  margin-left: 2px;
+}
+
+@keyframes pf-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(217, 119, 6, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-guided-tag {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .pf-guided-tag-wrapper {
+    top: auto;
+    bottom: 84px;
+    right: 16px;
+  }
 }
 </style>

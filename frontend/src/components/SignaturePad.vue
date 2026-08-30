@@ -1,19 +1,10 @@
 <script setup lang="ts">
 /**
- * Signature capture dialog: draw with a mouse/stylus/touch (signature_pad,
+ * Signature capture dialog: draw with mouse/stylus/touch (signature_pad,
  * "Draw" tab), type a name rendered in a cursive font onto a canvas
- * ("Type" tab), or upload an existing signature image ("Upload" tab,
- * PNG/JPEG — re-rendered to a bounded transparent PNG). Either way, "Save"
- * emits a PNG data URL for the caller to upload via
- * POST /sign/{submitterId}/signature.
- *
- * When `savedImageUrl` is set (the caller already has an image to show —
- * either this user's account-level saved signature, or whatever was
- * captured earlier in this session for the field currently being edited),
- * the dialog opens on a "use saved / redraw" choice screen instead of
- * straight into the draw/type tabs. Picking "use saved" emits `useSaved`
- * (no re-upload needed — the caller already knows the signature id behind
- * that image) instead of `save`.
+ * ("Type" tab), or upload an existing signature image ("Upload" tab).
+ * Supports DocuSign-style ink color selection (Navy Blue vs Pitch Black),
+ * calligraphy font styles, vector stroke smoothing, and legal disclaimer.
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import SignaturePadLib from "signature_pad";
@@ -45,6 +36,29 @@ const errorMessage = ref<string | null>(null);
 const uploadedImage = ref<HTMLImageElement | null>(null);
 const uploadedPreviewUrl = ref<string | null>(null);
 
+// Ink Color Selection
+const INK_NAVY = "#1A56DB";
+const INK_BLACK = "#111827";
+const inkColor = ref<string>(INK_NAVY);
+
+// Cursive Font Styles for Type Tab
+export interface FontStyleOption {
+  id: string;
+  name: string;
+  fontFamily: string;
+  fontSize: string;
+}
+
+const FONT_STYLES: FontStyleOption[] = [
+  { id: "caveat", name: "Classic Cursive", fontFamily: "'Caveat', 'Segoe Script', cursive, sans-serif", fontSize: "44px" },
+  { id: "dancing", name: "Elegant Script", fontFamily: "'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: "40px" },
+  { id: "greatvibes", name: "Formal Calligraphy", fontFamily: "'Great Vibes', 'Apple Chancery', cursive, serif", fontSize: "42px" },
+  { id: "sacramento", name: "Casual Flow", fontFamily: "'Sacramento', 'Lucida Handwriting', cursive, sans-serif", fontSize: "46px" },
+];
+
+const selectedFontId = ref<string>("caveat");
+const currentFont = computed(() => FONT_STYLES.find((f) => f.id === selectedFontId.value) || FONT_STYLES[0]);
+
 const drawCanvasRef = ref<HTMLCanvasElement | null>(null);
 const typeCanvasRef = ref<HTMLCanvasElement | null>(null);
 let pad: SignaturePadLib | null = null;
@@ -61,12 +75,20 @@ function resizeDrawCanvas(): void {
   pad?.clear();
 }
 
-/** Create the SignaturePad instance (once) and (re)size its canvas whenever it's actually laid out. */
+/** Create the SignaturePad instance with vector smoothing and active ink color */
 function ensurePad(): void {
   const canvas = drawCanvasRef.value;
   if (!canvas) return;
   if (!pad) {
-    pad = new SignaturePadLib(canvas, { backgroundColor: "rgba(255,255,255,0)" });
+    pad = new SignaturePadLib(canvas, {
+      backgroundColor: "rgba(255,255,255,0)",
+      penColor: inkColor.value,
+      minWidth: 1.5,
+      maxWidth: 3.5,
+      throttle: 16,
+    });
+  } else {
+    pad.penColor = inkColor.value;
   }
   if (!resizeObserver) {
     resizeObserver = new ResizeObserver(() => resizeDrawCanvas());
@@ -74,6 +96,11 @@ function ensurePad(): void {
   }
   resizeDrawCanvas();
 }
+
+watch(inkColor, (newColor) => {
+  if (pad) pad.penColor = newColor;
+  if (tab.value === "type") renderTyped();
+});
 
 function clearDraw(): void {
   pad?.clear();
@@ -89,18 +116,17 @@ function renderTyped(): void {
   if (!ctx) return;
   ctx.scale(ratio, ratio);
   ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
-  ctx.font = "42px 'Brush Script MT', 'Segoe Script', cursive";
-  ctx.fillStyle = "#1a1a2e";
+  ctx.font = `${currentFont.value.fontSize} ${currentFont.value.fontFamily}`;
+  ctx.fillStyle = inkColor.value;
   ctx.textBaseline = "middle";
-  ctx.fillText(typedName.value, 12, canvas.offsetHeight / 2);
+  ctx.fillText(typedName.value || (isInitials.value ? "AB" : "Adopt Signature"), 16, canvas.offsetHeight / 2);
 }
 
-watch(typedName, () => {
+watch([typedName, selectedFontId], () => {
   if (tab.value === "type") nextTick(renderTyped);
 });
 
-// Output bounds for uploaded images: plenty for a signature box while
-// keeping the re-rendered PNG far below the backend's 1 MB cap.
+// Output bounds for uploaded images
 const UPLOAD_MAX_W = 800;
 const UPLOAD_MAX_H = 300;
 
@@ -108,9 +134,9 @@ function onFileChosen(event: Event): void {
   errorMessage.value = null;
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
-  input.value = ""; // allow re-picking the same file
+  input.value = "";
   if (!file) return;
-  if (!["image/png", "image/jpeg"].includes(file.type)) {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
     errorMessage.value = "Please choose a PNG or JPEG image.";
     return;
   }
@@ -132,7 +158,6 @@ function onFileChosen(event: Event): void {
   reader.readAsDataURL(file);
 }
 
-/** Re-render the uploaded image to a bounded PNG (aspect-fit, transparent padding-free). */
 function uploadedToDataUrl(): string | null {
   const image = uploadedImage.value;
   if (!image || !image.naturalWidth || !image.naturalHeight) return null;
@@ -148,7 +173,7 @@ function uploadedToDataUrl(): string | null {
 
 watch(tab, (t) => {
   if (t === "draw") nextTick(ensurePad);
-  else nextTick(renderTyped);
+  else if (t === "type") nextTick(renderTyped);
 });
 
 function reset(): void {
@@ -168,6 +193,7 @@ watch(
     reset();
     nextTick(() => {
       if (step.value === "capture" && tab.value === "draw") ensurePad();
+      else if (step.value === "capture" && tab.value === "type") renderTyped();
     });
   },
 );
@@ -227,11 +253,37 @@ onBeforeUnmount(() => {
 <template>
   <v-dialog
     :model-value="modelValue"
-    max-width="520"
+    max-width="560"
     @update:model-value="(v: boolean) => emit('update:modelValue', v)"
   >
     <v-card>
-      <v-card-title>{{ isInitials ? "Initials" : "Signature" }}</v-card-title>
+      <v-card-title class="d-flex align-center">
+        <span>Adopt {{ isInitials ? "Initials" : "Signature" }}</span>
+        <v-spacer />
+        <!-- Ink Color Selector -->
+        <div v-if="step === 'capture'" class="d-flex align-center ga-1 mr-1">
+          <span class="text-caption text-medium-emphasis mr-1">Ink:</span>
+          <button
+            type="button"
+            class="ink-chip"
+            :class="{ 'ink-active': inkColor === INK_NAVY }"
+            style="background-color: #1A56DB;"
+            title="Navy Blue Ink"
+            aria-label="Navy Blue Ink"
+            @click="inkColor = INK_NAVY"
+          />
+          <button
+            type="button"
+            class="ink-chip"
+            :class="{ 'ink-active': inkColor === INK_BLACK }"
+            style="background-color: #111827;"
+            title="Black Ink"
+            aria-label="Black Ink"
+            @click="inkColor = INK_BLACK"
+          />
+        </div>
+      </v-card-title>
+
       <v-card-text>
         <v-alert v-if="errorMessage" type="error" density="compact" class="mb-4">{{ errorMessage }}</v-alert>
 
@@ -249,39 +301,65 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else>
-          <v-tabs v-model="tab">
-            <v-tab value="draw">Draw</v-tab>
-            <v-tab value="type">Type</v-tab>
-            <v-tab value="upload">Upload</v-tab>
+          <v-tabs v-model="tab" density="comfortable" color="primary">
+            <v-tab value="draw" prepend-icon="mdi-draw-pen">Draw</v-tab>
+            <v-tab value="type" prepend-icon="mdi-format-font">Type</v-tab>
+            <v-tab value="upload" prepend-icon="mdi-upload">Upload</v-tab>
           </v-tabs>
 
-          <v-window v-model="tab" class="mt-4">
+          <v-window v-model="tab" class="mt-3">
+            <!-- Draw Tab -->
             <v-window-item value="draw">
               <div class="canvas-frame">
                 <canvas ref="drawCanvasRef" class="signature-canvas" />
               </div>
-              <div class="d-flex justify-end mt-2">
-                <v-btn size="small" variant="text" @click="clearDraw">Clear</v-btn>
+              <div class="d-flex align-center justify-space-between mt-2">
+                <span class="text-caption text-medium-emphasis">Draw with your mouse, stylus, or fingertip</span>
+                <v-btn size="small" variant="text" prepend-icon="mdi-eraser" @click="clearDraw">Clear</v-btn>
               </div>
             </v-window-item>
+
+            <!-- Type Tab -->
             <v-window-item value="type">
               <v-text-field
                 v-model="typedName"
-                :label="isInitials ? 'Type your initials' : 'Type your name'"
+                :label="isInitials ? 'Type your initials' : 'Type your legal name'"
+                placeholder="e.g. John Doe"
                 autofocus
+                density="comfortable"
                 class="mb-2"
                 hide-details
               />
-              <div class="canvas-frame mt-2">
+
+              <!-- Style Selection Cards -->
+              <div class="style-cards-grid mt-2 mb-3">
+                <button
+                  v-for="font in FONT_STYLES"
+                  :key="font.id"
+                  type="button"
+                  class="font-style-card"
+                  :class="{ 'font-card-active': selectedFontId === font.id }"
+                  @click="selectedFontId = font.id"
+                >
+                  <span class="font-preview-sample" :style="{ fontFamily: font.fontFamily, color: inkColor }">
+                    {{ typedName.trim() || (isInitials ? "JD" : "John Doe") }}
+                  </span>
+                  <span class="font-name-label">{{ font.name }}</span>
+                </button>
+              </div>
+
+              <div class="canvas-frame mt-1">
                 <canvas ref="typeCanvasRef" class="signature-canvas" />
               </div>
             </v-window-item>
+
+            <!-- Upload Tab -->
             <v-window-item value="upload">
               <v-file-input
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/webp"
                 :label="isInitials ? 'Choose an initials image' : 'Choose a signature image'"
                 prepend-icon="mdi-image-outline"
-                density="compact"
+                density="comfortable"
                 hide-details
                 class="mb-2"
                 @change="onFileChosen"
@@ -290,55 +368,125 @@ onBeforeUnmount(() => {
                 <img :src="uploadedPreviewUrl" alt="Uploaded signature preview" />
               </div>
               <p v-else class="text-medium-emphasis text-body-2 mt-2">
-                PNG or JPEG. A photo or scan of your signature works best on a plain background.
+                PNG, JPEG, or WebP. High-contrast scans or photos on a white background work best.
               </p>
             </v-window-item>
           </v-window>
+
+          <!-- Legal Binding Consent Disclaimer -->
+          <div class="legal-disclaimer mt-3 pa-2 rounded bg-grey-lighten-4">
+            <p class="text-caption text-medium-emphasis mb-0">
+              <v-icon icon="mdi-shield-check" size="14" color="primary" class="mr-1" />
+              By clicking <strong>Adopt & Sign</strong>, I agree that this electronic signature is the legally binding equivalent of my physical handwritten signature.
+            </p>
+          </div>
         </template>
       </v-card-text>
-      <v-card-actions>
+
+      <v-card-actions class="pa-4 pt-1">
         <v-spacer />
         <v-btn variant="text" @click="cancel">Cancel</v-btn>
-        <v-btn v-if="step === 'capture'" color="primary" @click="save">Save</v-btn>
+        <v-btn v-if="step === 'capture'" color="primary" variant="flat" @click="save">Adopt & Sign</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
+.ink-chip {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.ink-chip:hover {
+  transform: scale(1.15);
+}
+
+.ink-active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #1A56DB;
+}
+
 .canvas-frame {
-  border: 1px dashed rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
+  border: 1px dashed rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  background-color: #fafbfc;
 }
 
 .signature-canvas {
   width: 100%;
-  height: 160px;
+  height: 150px;
   display: block;
   touch-action: none;
 }
 
-.saved-preview {
+.style-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.font-style-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
   border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 4px;
-  padding: 8px;
-  display: flex;
-  justify-content: center;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.saved-preview img {
+.font-style-card:hover {
+  border-color: #1A56DB;
+  background: #F0F5FF;
+}
+
+.font-card-active {
+  border-color: #1A56DB;
+  background: #EFF6FF;
+  box-shadow: 0 0 0 1px #1A56DB;
+}
+
+.font-preview-sample {
+  font-size: 1.35rem;
+  line-height: 1.3;
   max-width: 100%;
-  max-height: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.font-name-label {
+  font-size: 0.72rem;
+  color: rgba(0, 0, 0, 0.55);
+  margin-top: 2px;
+}
+
+.saved-preview,
 .upload-preview {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 8px;
   display: flex;
   justify-content: center;
-  padding: 8px;
+  background: #ffffff;
 }
 
+.saved-preview img,
 .upload-preview img {
   max-width: 100%;
-  max-height: 160px;
+  max-height: 140px;
+}
+
+.legal-disclaimer {
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 </style>

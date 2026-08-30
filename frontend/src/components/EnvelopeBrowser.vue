@@ -28,7 +28,8 @@ import {
   normalizeSearch,
   toRow,
 } from "../utils/envelopes";
-import type { SubmissionOut, SubmissionStatus, TemplateOut } from "../types";
+import http from "../utils/http";
+import type { AuditEventOut, SubmissionOut, SubmissionStatus, TemplateOut } from "../types";
 
 const props = defineProps<{
   sign: SubmissionOut[];
@@ -169,6 +170,28 @@ function expiryHint(row: Row): string | null {
 const downloadTarget = ref<SubmissionOut | null>(null);
 const dlDocument = ref(true);
 const dlCertificate = ref(true);
+
+const historyModalOpen = ref(false);
+const historySubmission = ref<SubmissionOut | null>(null);
+const historyLoading = ref(false);
+const historyEvents = ref<AuditEventOut[]>([]);
+const historyError = ref<string | null>(null);
+
+async function openHistoryModal(submission: SubmissionOut): Promise<void> {
+  historySubmission.value = submission;
+  historyModalOpen.value = true;
+  historyLoading.value = true;
+  historyError.value = null;
+  try {
+    const { data } = await http.get<AuditEventOut[]>(`/submissions/${submission.id}/events`);
+    historyEvents.value = data;
+  } catch (err: any) {
+    historyError.value = err.message || "Failed to load audit events.";
+    historyEvents.value = [];
+  } finally {
+    historyLoading.value = false;
+  }
+}
 
 function openDownload(submission: SubmissionOut): void {
   dlDocument.value = true;
@@ -458,6 +481,11 @@ async function startDownload(): Promise<void> {
                   target="_blank"
                 />
                 <v-list-item
+                  prepend-icon="mdi-history"
+                  title="Audit history"
+                  @click="openHistoryModal(item.submission)"
+                />
+                <v-list-item
                   v-if="item.isSender && canSend"
                   prepend-icon="mdi-content-copy"
                   title="Copy"
@@ -537,6 +565,50 @@ async function startDownload(): Promise<void> {
           >
             Download
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Audit History In-Modal Timeline -->
+    <v-dialog
+      :model-value="historyModalOpen"
+      max-width="560"
+      @update:model-value="(v: boolean) => { if (!v) historyModalOpen = false }"
+    >
+      <v-card v-if="historySubmission">
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-history" class="mr-2" color="primary" />
+          <span>Audit History: "{{ historySubmission.title }}"</span>
+        </v-card-title>
+        <v-card-text>
+          <v-progress-linear v-if="historyLoading" indeterminate class="mb-3" />
+          <v-alert v-if="historyError" type="error" density="compact" class="mb-3">{{ historyError }}</v-alert>
+          <div v-else-if="!historyLoading && historyEvents.length === 0" class="text-caption text-medium-emphasis text-center py-4">
+            No audit events recorded yet.
+          </div>
+          <v-list v-else density="compact" class="history-event-list">
+            <v-list-item
+              v-for="(event, idx) in historyEvents"
+              :key="idx"
+              :title="event.event.replace(/_/g, ' ').toUpperCase()"
+              :subtitle="`${formatDateTime(event.created_at)}${event.actor ? ` · ${event.actor.name}` : ''}`"
+            >
+              <template #prepend>
+                <v-icon
+                  :icon="event.event === 'opened' ? 'mdi-eye' : event.event === 'sent' ? 'mdi-send' : event.event === 'declined' ? 'mdi-close-circle' : event.event === 'created' ? 'mdi-file-plus' : 'mdi-circle-small'"
+                  :color="event.event === 'opened' ? 'primary' : event.event === 'declined' || event.event === 'cancelled' ? 'error' : 'medium-emphasis'"
+                  size="small"
+                />
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions class="pa-3">
+          <v-spacer />
+          <v-btn variant="text" :to="{ name: 'envelope-detail', params: { id: String(historySubmission.id) } }" prepend-icon="mdi-open-in-new">
+            Full Details
+          </v-btn>
+          <v-btn color="primary" variant="tonal" @click="historyModalOpen = false">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

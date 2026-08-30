@@ -23,6 +23,7 @@ import axios from "axios";
 import http, { extractBlobError, extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
+import { useDraftHandoffStore } from "../store/draftHandoff";
 import { userLabel } from "../utils/labels";
 import { roleColor, templateRoles } from "../utils/roleColors";
 import { UPLOAD_ACCEPT } from "../utils/uploads";
@@ -827,9 +828,16 @@ async function loadDraft(draftId: string): Promise<void> {
   step.value = 1;
 }
 
+const draftHandoff = useDraftHandoffStore();
+
 onMounted(async () => {
   await load();
   if (route.query.self === "1" && !props.draftId && !props.templateId) onlySigner.value = true;
+  const dropped = draftHandoff.consumeFile();
+  if (dropped && !props.draftId && !props.templateId) {
+    mode.value = "adhoc";
+    void onAdhocFilesChosen(dropped);
+  }
 });
 
 // --- send -------------------------------------------------------------------
