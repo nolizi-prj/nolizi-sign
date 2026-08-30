@@ -108,6 +108,10 @@ async function verify(): Promise<void> {
 
     <v-card v-else-if="view" class="state-card" variant="flat" border>
       <v-card-text class="py-8 px-6">
+        <div class="d-flex align-center mb-4">
+          <img src="/logo-mark.png" alt="Pumasi" style="height: 32px; width: 32px;" class="mr-2" />
+          <span class="text-subtitle-1 font-weight-bold text-primary">Pumasi Sign</span>
+        </div>
         <p class="text-overline mb-1">
           {{ phase === "retrieve" ? "Signed document" : "Signature requested" }}
         </p>

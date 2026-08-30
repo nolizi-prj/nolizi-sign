@@ -10,6 +10,9 @@ const microsoftLogoutUrl = "https://login.microsoftonline.com/common/oauth2/v2.0
 <template>
   <v-container class="d-flex justify-center pt-16">
     <v-card max-width="480" class="pa-4 text-center">
+      <div class="text-center pt-2 mb-2">
+        <img src="/logo-mark.png" alt="Pumasi" style="height: 48px; width: 48px;" />
+      </div>
       <v-card-title>You've signed out</v-card-title>
       <v-card-text>
         Your Pumasi Sign session has ended.
