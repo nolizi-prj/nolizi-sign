@@ -1,12 +1,23 @@
 /**
  * Pumasi Sign Feedback Pipeline -> GitHub Issues & Attachments.
+ * Captures user feedback, screenshot, runtime diagnostics, and creates a GitHub
+ * issue on https://github.com/pumasi-ai/pumasi-sign with full transparency.
  */
+
+export interface FeedbackDiagnosticError {
+  message: string;
+  source?: string;
+  lineno?: number;
+  colno?: number;
+  timestamp?: string;
+}
 
 export interface FeedbackSubmission {
   message: string;
   type?: 'bug' | 'enhancement' | 'question' | 'feedback';
   screenshotBase64?: string;
-  context?: Record<string, string>;
+  context?: Record<string, string | number | boolean | null | undefined>;
+  errors?: FeedbackDiagnosticError[];
   userEmail?: string;
 }
 
@@ -15,6 +26,22 @@ export interface FeedbackResult {
   issueUrl?: string;
   issueNumber?: number;
   message?: string;
+}
+
+/** Sanitize URL to strip sensitive tokens, secrets, or state parameters */
+function sanitizeUrl(rawUrl?: string): string {
+  if (!rawUrl) return 'N/A';
+  try {
+    const u = new URL(rawUrl);
+    for (const key of Array.from(u.searchParams.keys())) {
+      if (/token|state|code|session|secret|key|auth|password/i.test(key)) {
+        u.searchParams.set(key, 'REDACTED');
+      }
+    }
+    return u.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 export async function submitFeedbackToGitHub(
@@ -65,29 +92,51 @@ export async function submitFeedbackToGitHub(
   }
 
   // 2. Format Issue Body
-  const titlePrefix = submission.type === 'bug' ? '🐛 Bug: ' : submission.type === 'enhancement' ? '✨ Feature Request: ' : '';
-  const firstLine = submission.message.split('\n')[0].trim().slice(0, 80);
-  const issueTitle = `[Feedback] ${titlePrefix}${firstLine || 'User Feedback Report'}`;
+  const typeIcons: Record<string, string> = {
+    bug: '🐛 Bug',
+    enhancement: '✨ Feature Request',
+    question: '❓ Question',
+    feedback: '💬 General Feedback',
+  };
+
+  const typeKey = (submission.type || 'feedback').toLowerCase();
+  const typeName = typeIcons[typeKey] || '💬 Feedback';
+
+  const firstLine = submission.message.split('\n')[0].trim().slice(0, 75);
+  const issueTitle = `[Feedback] ${typeName}: ${firstLine || 'User Feedback Report'}`;
 
   const labels = ['feedback'];
-  if (submission.type === 'bug') labels.push('bug');
-  if (submission.type === 'enhancement') labels.push('enhancement');
+  if (typeKey === 'bug') labels.push('bug');
+  if (typeKey === 'enhancement') labels.push('enhancement');
+  if (typeKey === 'question') labels.push('question');
 
-  let body = `### Feedback Description\n\n${submission.message}\n\n`;
+  let body = `### Feedback Description\n\n${submission.message}\n\n---\n\n`;
 
-  if (screenshotUrl) {
-    body += `### Screenshot\n\n![Screenshot](${screenshotUrl})\n\n`;
-  }
+  body += `### Submitter & Type\n`;
+  body += `- **Type**: ${typeName}\n`;
+  body += `- **Submitter**: ${submission.userEmail?.trim() ? `\`${submission.userEmail.trim()}\`` : '_Anonymous / Guest_'}\n`;
+  body += `- **Submitted At**: \`${new Date().toISOString()}\`\n\n`;
 
   if (submission.context && Object.keys(submission.context).length > 0) {
-    body += `<details>\n<summary><strong>Client & System Diagnostics</strong></summary>\n\n| Property | Value |\n| :--- | :--- |\n`;
+    body += `---\n\n### Diagnostic Environment (Client-Side)\n\n`;
+    body += `| Property | Value |\n| :--- | :--- |\n`;
     for (const [k, v] of Object.entries(submission.context)) {
-      body += `| **${k}** | \`${v}\` |\n`;
+      const valStr = k.toLowerCase().includes('url') ? sanitizeUrl(String(v)) : String(v ?? 'N/A');
+      body += `| **${k}** | \`${valStr}\` |\n`;
     }
-    if (submission.userEmail) {
-      body += `| **Submitter Email** | \`${submission.userEmail}\` |\n`;
-    }
-    body += `\n</details>\n`;
+    body += `\n`;
+  }
+
+  if (submission.errors && submission.errors.length > 0) {
+    const errorLines = submission.errors
+      .slice(-6)
+      .map((e) => `- \`${e.timestamp || 'N/A'}\`: **${e.message}** (${e.source ?? 'script'}:${e.lineno ?? '?'}:${e.colno ?? '?'})`)
+      .join('\n');
+    body += `<details>\n<summary><b>Recent Client-Side Runtime Errors (${submission.errors.length})</b></summary>\n\n${errorLines}\n</details>\n\n`;
+  }
+
+  if (screenshotUrl) {
+    body += `---\n\n### Attached Screenshot\n\n<details open>\n<summary><b>View Screenshot</b> (<a href="${screenshotUrl}" target="_blank" rel="noopener">Open Full Resolution ↗</a>)</summary>\n\n![Screenshot](${screenshotUrl})\n</details>\n`;
   }
 
   // 3. Create GitHub Issue
@@ -110,7 +159,7 @@ export async function submitFeedbackToGitHub(
     if (!issueRes.ok) {
       const errText = await issueRes.text();
       console.error('GitHub issue creation failed:', issueRes.status, errText);
-      return { ok: false, message: 'Could not create GitHub issue.' };
+      return { ok: false, message: `GitHub API error (${issueRes.status}). Feedback logged locally.` };
     }
 
     const issueData: any = await issueRes.json();

@@ -60,9 +60,14 @@ export default {
           payload.message = formData.get('message') || '';
           payload.type = formData.get('type') || 'feedback';
           payload.screenshotBase64 = formData.get('screenshot') || '';
+          payload.userEmail = formData.get('userEmail') || '';
           const contextRaw = formData.get('context');
           if (contextRaw && typeof contextRaw === 'string') {
             try { payload.context = JSON.parse(contextRaw); } catch {}
+          }
+          const errorsRaw = formData.get('errors');
+          if (errorsRaw && typeof errorsRaw === 'string') {
+            try { payload.errors = JSON.parse(errorsRaw); } catch {}
           }
         }
 
