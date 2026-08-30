@@ -10,7 +10,7 @@
  * the dashboard only loads their names for the browser's "From template"
  * menu. Remind/cancel state and dialogs stay here; the browser emits.
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
@@ -19,6 +19,7 @@ import { useUiStore } from "../store/ui";
 import { displayRole, formatDate } from "../utils/labels";
 import { actionRequired } from "../utils/envelopes";
 import { useDraftHandoffStore } from "../store/draftHandoff";
+import { UPLOAD_ACCEPT } from "../utils/uploads";
 import EnvelopeBrowser from "../components/EnvelopeBrowser.vue";
 import type { SubmissionOut, TemplateOut } from "../types";
 
@@ -30,6 +31,10 @@ const router = useRouter();
 
 const isDragging = ref(false);
 const heroFileInputRef = ref<HTMLInputElement | null>(null);
+
+function preventWindowDrop(e: DragEvent): void {
+  e.preventDefault();
+}
 
 function onHeroFileDrop(e: DragEvent): void {
   isDragging.value = false;
@@ -47,8 +52,10 @@ function onHeroFileChosen(e: Event): void {
 }
 
 function processSelectedFile(file: File): void {
-  if (!file.name.match(/\.(pdf|docx|doc|txt)$/i)) {
-    ui.toast("Please select a PDF or Word document.");
+  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  const allowed = UPLOAD_ACCEPT.split(",");
+  if (!allowed.includes(ext)) {
+    ui.toast("Unsupported file format. Please choose a PDF, Office document, or image.");
     return;
   }
   draftHandoff.setFile(file);
@@ -113,7 +120,16 @@ async function loadAll(): Promise<void> {
   }
 }
 
-onMounted(loadAll);
+onMounted(() => {
+  window.addEventListener("dragover", preventWindowDrop);
+  window.addEventListener("drop", preventWindowDrop);
+  void loadAll();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("dragover", preventWindowDrop);
+  window.removeEventListener("drop", preventWindowDrop);
+});
 
 // --- Sent envelopes: cancel / remind ---------------------------------------------------
 
@@ -293,7 +309,7 @@ async function confirmDeleteDraft(): Promise<void> {
         <input
           ref="heroFileInputRef"
           type="file"
-          accept=".pdf,.docx,.doc,.txt"
+          :accept="UPLOAD_ACCEPT"
           style="display: none;"
           @change="onHeroFileChosen"
         />
@@ -452,6 +468,10 @@ async function confirmDeleteDraft(): Promise<void> {
 .hero-btn.v-btn--variant-flat {
   background-color: #ffffff;
   color: rgba(0, 0, 0, 0.87);
+}
+
+.queue-card {
+  border-color: rgba(180, 83, 9, 0.4);
 }
 
 .hero-dropzone {

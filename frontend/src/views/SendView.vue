@@ -833,10 +833,12 @@ const draftHandoff = useDraftHandoffStore();
 onMounted(async () => {
   await load();
   if (route.query.self === "1" && !props.draftId && !props.templateId) onlySigner.value = true;
-  const dropped = draftHandoff.consumeFile();
-  if (dropped && !props.draftId && !props.templateId) {
-    mode.value = "adhoc";
-    void onAdhocFilesChosen(dropped);
+  if (!props.draftId && !props.templateId) {
+    const dropped = draftHandoff.consumeFile();
+    if (dropped) {
+      mode.value = "adhoc";
+      void onAdhocFilesChosen(dropped);
+    }
   }
 });
 

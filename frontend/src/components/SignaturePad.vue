@@ -50,10 +50,11 @@ export interface FontStyleOption {
 }
 
 const FONT_STYLES: FontStyleOption[] = [
-  { id: "caveat", name: "Classic Cursive", fontFamily: "'Caveat', 'Segoe Script', cursive, sans-serif", fontSize: "44px" },
-  { id: "dancing", name: "Elegant Script", fontFamily: "'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: "40px" },
-  { id: "greatvibes", name: "Formal Calligraphy", fontFamily: "'Great Vibes', 'Apple Chancery', cursive, serif", fontSize: "42px" },
-  { id: "sacramento", name: "Casual Flow", fontFamily: "'Sacramento', 'Lucida Handwriting', cursive, sans-serif", fontSize: "46px" },
+  { id: "caveat", name: "Classic Cursive", fontFamily: "'Caveat', cursive, sans-serif", fontSize: "44px" },
+  { id: "dancing", name: "Elegant Script", fontFamily: "'Dancing Script', cursive, sans-serif", fontSize: "40px" },
+  { id: "greatvibes", name: "Formal Calligraphy", fontFamily: "'Great Vibes', cursive, serif", fontSize: "42px" },
+  { id: "sacramento", name: "Casual Flow", fontFamily: "'Sacramento', cursive, sans-serif", fontSize: "46px" },
+  { id: "nanum", name: "Brush Pen (한글/EN)", fontFamily: "'Nanum Pen Script', 'Caveat', cursive, sans-serif", fontSize: "46px" },
 ];
 
 const selectedFontId = ref<string>("caveat");
@@ -99,16 +100,21 @@ function ensurePad(): void {
 
 watch(inkColor, (newColor) => {
   if (pad) pad.penColor = newColor;
-  if (tab.value === "type") renderTyped();
+  if (tab.value === "type") void renderTyped();
 });
 
 function clearDraw(): void {
   pad?.clear();
 }
 
-function renderTyped(): void {
+async function renderTyped(): Promise<void> {
   const canvas = typeCanvasRef.value;
   if (!canvas || canvas.offsetWidth === 0 || canvas.offsetHeight === 0) return;
+  if ("fonts" in document) {
+    try {
+      await document.fonts.load(`${currentFont.value.fontSize} ${currentFont.value.fontFamily}`);
+    } catch {}
+  }
   const ratio = Math.max(window.devicePixelRatio || 1, 1);
   canvas.width = canvas.offsetWidth * ratio;
   canvas.height = canvas.offsetHeight * ratio;
@@ -123,7 +129,7 @@ function renderTyped(): void {
 }
 
 watch([typedName, selectedFontId], () => {
-  if (tab.value === "type") nextTick(renderTyped);
+  if (tab.value === "type") nextTick(() => void renderTyped());
 });
 
 // Output bounds for uploaded images
@@ -137,7 +143,7 @@ function onFileChosen(event: Event): void {
   input.value = "";
   if (!file) return;
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-    errorMessage.value = "Please choose a PNG or JPEG image.";
+    errorMessage.value = "Please choose a PNG, JPEG, or WebP image.";
     return;
   }
   const reader = new FileReader();
@@ -386,7 +392,7 @@ onBeforeUnmount(() => {
       <v-card-actions class="pa-4 pt-1">
         <v-spacer />
         <v-btn variant="text" @click="cancel">Cancel</v-btn>
-        <v-btn v-if="step === 'capture'" color="primary" variant="flat" @click="save">Adopt & Sign</v-btn>
+        <v-btn v-if="step === 'capture'" color="primary" variant="flat" aria-label="Save" @click="save">Adopt &amp; Sign</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

@@ -28,8 +28,8 @@ import {
   normalizeSearch,
   toRow,
 } from "../utils/envelopes";
-import http from "../utils/http";
-import type { AuditEventOut, SubmissionOut, SubmissionStatus, TemplateOut } from "../types";
+import http, { extractError } from "../utils/http";
+import type { AuditEventOut, AuditEventType, SubmissionOut, SubmissionStatus, TemplateOut } from "../types";
 
 const props = defineProps<{
   sign: SubmissionOut[];
@@ -177,19 +177,43 @@ const historyLoading = ref(false);
 const historyEvents = ref<AuditEventOut[]>([]);
 const historyError = ref<string | null>(null);
 
+let historySeq = 0;
+
 async function openHistoryModal(submission: SubmissionOut): Promise<void> {
+  const seq = ++historySeq;
   historySubmission.value = submission;
+  historyEvents.value = [];
   historyModalOpen.value = true;
   historyLoading.value = true;
   historyError.value = null;
   try {
     const { data } = await http.get<AuditEventOut[]>(`/submissions/${submission.id}/events`);
-    historyEvents.value = data;
-  } catch (err: any) {
-    historyError.value = err.message || "Failed to load audit events.";
-    historyEvents.value = [];
+    if (seq === historySeq) {
+      historyEvents.value = data;
+    }
+  } catch (err) {
+    if (seq === historySeq) {
+      historyError.value = extractError(err);
+      historyEvents.value = [];
+    }
   } finally {
-    historyLoading.value = false;
+    if (seq === historySeq) {
+      historyLoading.value = false;
+    }
+  }
+}
+
+function formatAuditLabel(evt: AuditEventType): string {
+  switch (evt) {
+    case "created": return "Created draft";
+    case "sent": return "Sent envelope";
+    case "opened": return "Viewed document";
+    case "reminded": return "Sent reminder";
+    case "cancelled": return "Voided envelope";
+    case "declined": return "Declined to sign";
+    case "corrected": return "Corrected details";
+    case "expired": return "Expired";
+    default: return evt;
   }
 }
 
@@ -590,7 +614,7 @@ async function startDownload(): Promise<void> {
             <v-list-item
               v-for="(event, idx) in historyEvents"
               :key="idx"
-              :title="event.event.replace(/_/g, ' ').toUpperCase()"
+              :title="formatAuditLabel(event.event)"
               :subtitle="`${formatDateTime(event.created_at)}${event.actor ? ` · ${event.actor.name}` : ''}`"
             >
               <template #prepend>
