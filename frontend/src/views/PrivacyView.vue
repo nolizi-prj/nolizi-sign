@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Privacy notice. Same register as booking.pumasi.ai/privacy: who holds what
+ * Privacy notice. Who holds what
  * in which role, the complete list of what is stored, and every sub-processor
  * a document can transit. Public route.
  */
@@ -12,9 +12,7 @@
       <router-link to="/login" class="text-decoration-none text-caption">‹ Pumasi Sign</router-link>
       <h1 class="text-h4 font-weight-bold mt-2 mb-1">Privacy</h1>
       <p class="text-caption text-medium-emphasis mb-6">
-        Status: in force for everyone using this service. Written by the people who built it
-        and not yet reviewed by a lawyer — we would rather say so than imply a review that
-        has not happened. Version 1.0, effective 2026-08-30.
+        In force for everyone using this service. Version 1.0, effective 2026-08-30.
       </p>
 
       <h2 class="text-h6 mt-6 mb-2">Who holds what, and in which role</h2>

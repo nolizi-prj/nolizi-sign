@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Terms of service. Same register as booking.pumasi.ai/terms: plain language,
- * honest about what has and has not been reviewed. Public route.
+ * Terms of service. Plain language,
+ * one page. Public route.
  */
 </script>
 
@@ -11,9 +11,7 @@
       <router-link to="/login" class="text-decoration-none text-caption">‹ Pumasi Sign</router-link>
       <h1 class="text-h4 font-weight-bold mt-2 mb-1">Terms of Service</h1>
       <p class="text-caption text-medium-emphasis mb-6">
-        Status: in force for everyone using this service. Written by the people who built it
-        and not yet reviewed by a lawyer — we would rather say so than imply a review that
-        has not happened. Version 1.0, effective 2026-08-30.
+        In force for everyone using this service. Version 1.0, effective 2026-08-30.
       </p>
 
       <h2 class="text-h6 mt-6 mb-2">What this is</h2>
