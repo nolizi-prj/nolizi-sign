@@ -10,8 +10,13 @@
  * the submitter the cookie names. Signing links are capability URLs
  * (`/sign/t/<access token>`) but opening one only shows title + masked email —
  * the document itself is behind the emailed 6-digit code.
+ *
+ * The API mirrors the FastAPI reference app's contract (the Vue frontend was
+ * written against it): /users, /templates, /submissions (+adhoc, actions),
+ * /sign/token/*, /sign/:id, /files/*.
  */
 
+import { PDFDocument } from 'pdf-lib';
 import { stampAndCertifyPdf, PlacedField, SignerInfo } from './core/stamping.js';
 import { sendMail, mailConfigured, MailEnv } from './mail.js';
 
@@ -24,6 +29,7 @@ const SESSION_TTL_DAYS = 30;
 const SIGNER_TTL_HOURS = 24;
 const CODE_TTL_MIN = 15;
 const RESEND_GUARD_SEC = 60;
+const MAX_PDF_BYTES = 1_500_000; // DO SQLite row ceiling is 2MB; leave headroom. R2 lifts this later.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -78,6 +84,9 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array | null => {
   }
 };
 
+/** Internal submitter status → the frontend's SubmitterStatus. */
+const outSubmitterStatus = (s: string): string => (s === 'signed' ? 'completed' : s);
+
 interface UserRow {
   id: string;
   email: string;
@@ -116,6 +125,15 @@ export class PumasiSignService implements DurableObject {
         submitter_id TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         created_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS recipients (
+        id TEXT PRIMARY KEY,
+        owner_email TEXT NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT,
+        UNIQUE(owner_email, email)
       );
 
       CREATE TABLE IF NOT EXISTS org_branding (
@@ -217,10 +235,20 @@ export class PumasiSignService implements DurableObject {
     // Columns added after first deploy — each guarded, SQLite has no IF NOT EXISTS for columns.
     const alters = [
       `ALTER TABLE submissions ADD COLUMN page_count INTEGER DEFAULT 1`,
+      `ALTER TABLE submissions ADD COLUMN template_id TEXT`,
+      `ALTER TABLE submissions ADD COLUMN reminders_enabled INTEGER DEFAULT 1`,
+      `ALTER TABLE submissions ADD COLUMN reminder_interval_days INTEGER DEFAULT 3`,
+      `ALTER TABLE submissions ADD COLUMN archived_at TEXT`,
+      `ALTER TABLE submitters ADD COLUMN recipient_id TEXT`,
+      `ALTER TABLE submitters ADD COLUMN is_cc INTEGER DEFAULT 0`,
+      `ALTER TABLE submitters ADD COLUMN last_reminded_at TEXT`,
+      `ALTER TABLE submitters ADD COLUMN reminder_count INTEGER DEFAULT 0`,
       `ALTER TABLE submission_fields ADD COLUMN required INTEGER DEFAULT 1`,
       `ALTER TABLE submission_fields ADD COLUMN font_size REAL`,
       `ALTER TABLE submission_fields ADD COLUMN options_json TEXT`,
       `ALTER TABLE submission_fields ADD COLUMN default_value TEXT`,
+      `ALTER TABLE submission_fields ADD COLUMN field_role TEXT`,
+      `ALTER TABLE templates ADD COLUMN roles_json TEXT`,
     ];
     for (const stmt of alters) {
       try { this.sql.exec(stmt); } catch { /* already applied */ }
@@ -335,19 +363,19 @@ export class PumasiSignService implements DurableObject {
     return true;
   }
 
-  /** Field rows → the frontend's FieldDef shape. Role comes from the owning submitter. */
+  /** Field rows → the frontend's FieldDef shape. Role comes from the stored field_role or the owning submitter. */
   private fieldDefs(submissionId: string): any[] {
     const roleById = new Map(
       this.all<{ id: string; role: string }>(`SELECT id, role FROM submitters WHERE submission_id = ?`, submissionId)
         .map((s) => [s.id, s.role || 'Signer']),
     );
     return this.all(
-      `SELECT id, submitter_id, type, page, x, y, width, height, value, required, font_size, options_json, default_value
+      `SELECT id, submitter_id, type, page, x, y, width, height, value, required, font_size, options_json, default_value, field_role
          FROM submission_fields WHERE submission_id = ?`, submissionId,
     ).map((f: any) => ({
       id: f.id,
       type: f.type,
-      role: f.type === 'label' ? '' : (roleById.get(f.submitter_id) ?? ''),
+      role: f.type === 'label' ? '' : (f.field_role || roleById.get(f.submitter_id) || ''),
       page: f.page,
       x: f.x, y: f.y, w: f.width, h: f.height,
       required: Boolean(f.required),
@@ -359,33 +387,177 @@ export class PumasiSignService implements DurableObject {
 
   private submitterTurn(submitter: { submission_id: string; signing_order: number }): boolean {
     const blocking = this.one<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM submitters WHERE submission_id = ? AND signing_order < ? AND status NOT IN ('signed')`,
+      `SELECT COUNT(*) AS n FROM submitters WHERE submission_id = ? AND signing_order < ? AND status NOT IN ('signed') AND is_cc = 0`,
       submitter.submission_id, submitter.signing_order,
     );
     return (blocking?.n ?? 0) === 0;
   }
 
-  /** Email the pending signers whose turn it now is. */
-  private async inviteCurrentTurn(submissionId: string): Promise<void> {
+  /** Email the pending non-CC signers whose turn it now is. */
+  private async inviteCurrentTurn(submissionId: string, onlySubmitterId?: string): Promise<void> {
     const sub = this.one<any>(`SELECT id, title, created_by FROM submissions WHERE id = ?`, submissionId);
     if (!sub) return;
     const sender = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, sub.created_by);
     const senderName = sender?.name || sub.created_by;
     const pending = this.all<any>(
       `SELECT id, name, email, token, signing_order FROM submitters
-        WHERE submission_id = ? AND status = 'pending' ORDER BY signing_order ASC`, submissionId,
+        WHERE submission_id = ? AND status = 'pending' AND is_cc = 0 ORDER BY signing_order ASC`, submissionId,
     );
     if (!pending.length) return;
     const firstOrder = pending[0].signing_order;
-    for (const s of pending.filter((p) => p.signing_order === firstOrder)) {
+    const targets = onlySubmitterId
+      ? pending.filter((p) => p.id === onlySubmitterId)
+      : pending.filter((p) => p.signing_order === firstOrder);
+    for (const s of targets) {
       const link = `${this.baseUrl()}/sign/t/${s.token}`;
       const ok = await this.mailOrLog(
         s.email,
         `${senderName} sent you "${sub.title}" to sign`,
         `Hello ${s.name},\n\n${senderName} has requested your signature on "${sub.title}".\n\nReview and sign here:\n${link}\n\nYou will be asked for a verification code sent to this email address before the document opens.\n\n— Pumasi Sign`,
       );
-      if (ok) this.audit(submissionId, 'invite_sent', s.email, s.name);
+      if (ok) {
+        this.audit(submissionId, 'invite_sent', s.email, s.name);
+        this.sql.exec(
+          `UPDATE submitters SET last_reminded_at = ?, reminder_count = reminder_count + 1 WHERE id = ?`,
+          new Date().toISOString(), s.id,
+        );
+      }
     }
+  }
+
+  // ── directory: the sender's recipients ─────────────────────────────────
+
+  private userBriefFor(owner: UserRow, email: string, name: string, recipientId?: string) {
+    const isOwner = email.toLowerCase() === owner.email.toLowerCase();
+    return {
+      id: isOwner ? owner.id : (recipientId ?? email),
+      email,
+      name,
+      is_external: !isOwner,
+    };
+  }
+
+  private directoryUsers(owner: UserRow): any[] {
+    const rows = this.all<any>(
+      `SELECT id, email, name FROM recipients WHERE owner_email = ? ORDER BY name ASC`, owner.email,
+    );
+    return [
+      { id: owner.id, email: owner.email, name: owner.name, is_admin: true, is_external: false, can_send: true },
+      ...rows.map((r) => ({ id: r.id, email: r.email, name: r.name, is_admin: false, is_external: true, can_send: false })),
+    ];
+  }
+
+  /** Resolve a wizard user_id (owner id or recipient id) to {email, name, recipientId}. */
+  private resolveDirectoryUser(owner: UserRow, userId: string): { email: string; name: string; recipientId?: string } | undefined {
+    if (userId === owner.id) return { email: owner.email, name: owner.name };
+    const r = this.one<any>(`SELECT id, email, name FROM recipients WHERE id = ? AND owner_email = ?`, userId, owner.email);
+    if (r) return { email: r.email, name: r.name, recipientId: r.id };
+    return undefined;
+  }
+
+  // ── outbound shapes ────────────────────────────────────────────────────
+
+  private templateOut(owner: UserRow, t: any): any {
+    const fields = t.fields_json ? JSON.parse(t.fields_json) : [];
+    const roles = t.roles_json
+      ? JSON.parse(t.roles_json)
+      : [...new Set(fields.map((f: any) => f.role).filter((r: string) => r))];
+    return {
+      id: t.id,
+      name: t.name,
+      page_count: t.page_count || 1,
+      fields,
+      roles,
+      created_at: t.created_at,
+      shared: Boolean(t.is_shared),
+      owner: { id: owner.id, name: owner.name, email: owner.email, is_external: false },
+    };
+  }
+
+  private submissionOut(viewer: UserRow, sub: any): any {
+    const submitters = this.all<any>(
+      `SELECT id, name, email, role, signing_order, status, signed_at, is_cc, recipient_id, last_reminded_at, reminder_count
+         FROM submitters WHERE submission_id = ? ORDER BY signing_order ASC, created_at ASC`, sub.id,
+    );
+    const mine = submitters.find((s) => s.email.toLowerCase() === viewer.email.toLowerCase());
+    const tpl = sub.template_id
+      ? this.one<any>(`SELECT id, name, is_adhoc FROM templates WHERE id = ?`, sub.template_id)
+      : undefined;
+    const sender = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, sub.created_by);
+    return {
+      id: sub.id,
+      public_uid: sub.public_uid,
+      title: sub.title,
+      message: sub.message || null,
+      status: sub.status,
+      created_at: sub.created_at,
+      completed_at: sub.completed_at || null,
+      expires_at: sub.expires_at || null,
+      reminders_enabled: Boolean(sub.reminders_enabled ?? 1),
+      reminder_interval_days: sub.reminder_interval_days ?? 3,
+      template: tpl
+        ? { id: tpl.id, name: tpl.name, is_adhoc: Boolean(tpl.is_adhoc) }
+        : { id: sub.id, name: sub.title, is_adhoc: true },
+      sender: sender
+        ? { id: sender.id, name: sender.name, email: sender.email, is_external: false }
+        : { id: sub.created_by, name: sub.created_by, email: sub.created_by, is_external: false },
+      submitters: submitters.map((s) => ({
+        id: s.id,
+        user: {
+          // The wizard reloads drafts by directory user id — the owner's is their account id.
+          id: s.recipient_id || (sender && s.email.toLowerCase() === sender.email.toLowerCase() ? sender.id : s.email),
+          name: s.name, email: s.email,
+          is_external: s.email.toLowerCase() !== sub.created_by.toLowerCase(),
+        },
+        role: s.role || 'Signer',
+        status: outSubmitterStatus(s.status),
+        signed_at: s.signed_at || null,
+        email_status: null,
+        last_reminded_at: s.last_reminded_at || null,
+        reminder_count: s.reminder_count ?? 0,
+        order_index: s.signing_order ?? 0,
+        is_cc: Boolean(s.is_cc),
+      })),
+      my_submitter_id: mine?.id ?? null,
+      archived_by_me: Boolean(sub.archived_at),
+      has_certificate: Boolean(sub.completed_pdf_blob),
+    };
+  }
+
+  /** Create submitter rows + resolved field rows for a new submission. */
+  private createSubmittersAndFields(
+    owner: UserRow, submissionId: string,
+    signers: Array<{ role: string; user_id: string; order?: number; is_cc?: boolean }>,
+    fields: any[], now: string,
+  ): { error?: string } {
+    const byRole = new Map<string, string>();
+    for (const s of signers) {
+      const resolved = this.resolveDirectoryUser(owner, String(s.user_id));
+      if (!resolved) return { error: `Unknown recipient: ${s.user_id}` };
+      const subId = `subtr-${crypto.randomUUID().slice(0, 8)}`;
+      this.sql.exec(
+        `INSERT INTO submitters (id, submission_id, name, email, role, signing_order, token, status, is_cc, recipient_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        subId, submissionId, resolved.name, resolved.email.toLowerCase(),
+        s.role || 'Signer', Number(s.order) || 0, newToken(),
+        s.is_cc ? 1 : 0, resolved.recipientId ?? null, now,
+      );
+      if (!s.is_cc) byRole.set(s.role, subId);
+    }
+    for (const f of fields || []) {
+      const ownerSubmitter = f.type === 'label' ? '' : (byRole.get(f.role) ?? '');
+      if (f.type !== 'label' && !ownerSubmitter) continue; // field for an unassigned role
+      this.sql.exec(
+        `INSERT INTO submission_fields (id, submission_id, submitter_id, type, page, x, y, width, height, value, required, font_size, options_json, default_value, field_role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `fld-${crypto.randomUUID().slice(0, 8)}`,
+        submissionId, ownerSubmitter, f.type, Number(f.page) || 0,
+        Number(f.x) || 0, Number(f.y) || 0, Number(f.w ?? f.width) || 0, Number(f.h ?? f.height) || 0,
+        '', f.required === false ? 0 : 1, f.font_size ?? null,
+        f.options ? JSON.stringify(f.options) : null, f.default_value ?? null, f.role ?? null,
+      );
+    }
+    return {};
   }
 
   // ── request dispatch ────────────────────────────────────────────────────
@@ -395,14 +567,14 @@ export class PumasiSignService implements DurableObject {
     const path = url.pathname;
     const method = req.method;
     try {
-      return await this.route(req, path, method);
+      return await this.route(req, url, path, method);
     } catch (err) {
       console.warn(`[sign] ${method} ${path} failed: ${(err as Error).message}`);
       return json({ error: 'Internal error' }, 500);
     }
   }
 
-  private async route(req: Request, path: string, method: string): Promise<Response> {
+  private async route(req: Request, url: URL, path: string, method: string): Promise<Response> {
     // ── auth ──────────────────────────────────────────────────────────────
     if (path === '/api/auth/login/request' && method === 'POST') {
       const body: any = await req.json();
@@ -459,7 +631,7 @@ export class PumasiSignService implements DurableObject {
       return json(
         {
           ok: true,
-          user: { id: user.id, email: user.email, name: user.name, is_admin: true, can_send: true },
+          user: { id: user.id, email: user.email, name: user.name, is_admin: true, is_external: false, can_send: true },
           branding: branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB' },
         },
         200,
@@ -470,7 +642,7 @@ export class PumasiSignService implements DurableObject {
     if (path === '/api/auth/me' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      return json({ id: user.id, email: user.email, name: user.name, is_admin: true, can_send: true });
+      return json({ id: user.id, email: user.email, name: user.name, is_admin: true, is_external: false, can_send: true });
     }
 
     if (path === '/api/auth/logout' && method === 'POST') {
@@ -518,14 +690,44 @@ export class PumasiSignService implements DurableObject {
       return json(branding);
     }
 
+    // ── owner: recipient directory (the wizard's "users") ─────────────────
+    if (path === '/api/users' && method === 'GET') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      return json(this.directoryUsers(user));
+    }
+
+    if (path === '/api/users' && method === 'POST') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const body: any = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'A valid email is required' }, 400);
+      if (email === user.email.toLowerCase()) {
+        return json({ id: user.id, email: user.email, name: user.name, is_admin: true, is_external: false, can_send: true });
+      }
+      const existing = this.one<any>(`SELECT id, email, name FROM recipients WHERE owner_email = ? AND email = ?`, user.email, email);
+      if (existing) {
+        return json({ id: existing.id, email: existing.email, name: existing.name, is_admin: false, is_external: true, can_send: false });
+      }
+      const id = `rcp-${crypto.randomUUID().slice(0, 8)}`;
+      const name = String(body.name || email.split('@')[0]).slice(0, 120);
+      this.sql.exec(
+        `INSERT INTO recipients (id, owner_email, email, name, created_at) VALUES (?, ?, ?, ?, ?)`,
+        id, user.email, email, name, new Date().toISOString(),
+      );
+      return json({ id, email, name, is_admin: false, is_external: true, can_send: false }, 201);
+    }
+
     // ── owner: templates ──────────────────────────────────────────────────
     if (path === '/api/templates' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      return json(this.all(
-        `SELECT id, name, page_count, is_shared, created_at FROM templates
-          WHERE created_by = ? AND archived_at IS NULL ORDER BY created_at DESC`, user.email,
-      ));
+      const rows = this.all<any>(
+        `SELECT id, name, page_count, fields_json, roles_json, is_shared, is_adhoc, created_at FROM templates
+          WHERE created_by = ? AND archived_at IS NULL AND is_adhoc = 0 ORDER BY created_at DESC`, user.email,
+      );
+      return json(rows.map((t) => this.templateOut(user, t)));
     }
 
     if (path === '/api/templates' && method === 'POST') {
@@ -535,95 +737,252 @@ export class PumasiSignService implements DurableObject {
       const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
       const pdfBytes = body.pdfBase64 ? dataUrlToBytes(`,${body.pdfBase64}`) : null;
       this.sql.exec(
-        `INSERT INTO templates (id, name, created_by, pdf_blob, page_count, fields_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO templates (id, name, created_by, pdf_blob, page_count, fields_json, roles_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         id, String(body.name || 'Untitled Template'), user.email, pdfBytes,
-        Number(body.pageCount) || 1, JSON.stringify(body.fields || []), new Date().toISOString(),
+        Number(body.pageCount ?? body.page_count) || 1, JSON.stringify(body.fields || []),
+        JSON.stringify(body.roles || []), new Date().toISOString(),
       );
-      return json({ id, name: body.name }, 201);
+      const t = this.one<any>(`SELECT id, name, page_count, fields_json, roles_json, is_shared, created_at FROM templates WHERE id = ?`, id);
+      return json(this.templateOut(user, t), 201);
     }
 
-    // ── owner: submissions ────────────────────────────────────────────────
-    if (path === '/api/submissions' && method === 'GET') {
+    const tplMatch = path.match(/^\/api\/templates\/([A-Za-z0-9_-]+)$/);
+    if (tplMatch && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      const subs = this.all(
-        `SELECT id, public_uid, title, message, created_by, status, completed_at, created_at, updated_at
-           FROM submissions WHERE created_by = ? ORDER BY created_at DESC`, user.email,
+      const t = this.one<any>(
+        `SELECT id, name, page_count, fields_json, roles_json, is_shared, created_at FROM templates WHERE id = ? AND created_by = ?`,
+        tplMatch[1], user.email,
       );
-      for (const s of subs as any[]) {
-        s.submitters = this.all(
-          `SELECT id, name, email, role, signing_order, status, signed_at FROM submitters WHERE submission_id = ? ORDER BY signing_order ASC`,
-          s.id,
-        );
-      }
-      return json(subs);
+      if (!t) return json({ error: 'Template not found' }, 404);
+      return json(this.templateOut(user, t));
     }
 
+    if (path.match(/^\/api\/files\/template-pdf\/[A-Za-z0-9_-]+$/) && method === 'GET') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const id = path.split('/').pop()!;
+      const t = this.one<any>(`SELECT name, pdf_blob FROM templates WHERE id = ? AND created_by = ?`, id, user.email);
+      if (!t || !t.pdf_blob) return json({ error: 'Not found' }, 404);
+      return new Response(t.pdf_blob, {
+        headers: { 'Content-Type': 'application/pdf', ...corsHeaders },
+      });
+    }
+
+    // ── owner: merge picked files into the one PDF fields get placed on ───
+    if (path === '/api/submissions/adhoc/merged-document' && method === 'POST') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const form = await req.formData();
+      const files = form.getAll('files').filter((f): f is File => f instanceof File);
+      if (!files.length) return json({ error: 'No files uploaded' }, 400);
+
+      const merged = await PDFDocument.create();
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const lower = file.name.toLowerCase();
+        if (lower.endsWith('.pdf')) {
+          const src = await PDFDocument.load(bytes).catch(() => null);
+          if (!src) return json({ error: `"${file.name}" is not a readable PDF.` }, 422);
+          const pages = await merged.copyPages(src, src.getPageIndices());
+          for (const p of pages) merged.addPage(p);
+        } else if (/\.(png|jpe?g)$/.test(lower)) {
+          const img = lower.endsWith('.png') ? await merged.embedPng(bytes) : await merged.embedJpg(bytes);
+          const page = merged.addPage([612, 792]);
+          const scale = Math.min(552 / img.width, 712 / img.height, 1);
+          page.drawImage(img, {
+            x: (612 - img.width * scale) / 2,
+            y: (792 - img.height * scale) / 2,
+            width: img.width * scale,
+            height: img.height * scale,
+          });
+        } else {
+          return json({ error: `"${file.name}": only PDF, PNG, and JPG are supported here. Convert Office files to PDF first.` }, 422);
+        }
+      }
+      const out = await merged.save();
+      if (out.length > MAX_PDF_BYTES) {
+        return json({ error: 'The combined document is too large (1.5MB limit for now).' }, 413);
+      }
+      return new Response(out.buffer as ArrayBuffer, {
+        headers: { 'Content-Type': 'application/pdf', ...corsHeaders },
+      });
+    }
+
+    // ── owner: create one-off envelope from an uploaded PDF ───────────────
+    if (path === '/api/submissions/adhoc' && method === 'POST') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const form = await req.formData();
+      const file = form.get('file');
+      if (!(file instanceof File)) return json({ error: 'A document file is required' }, 400);
+      const pdfBytes = new Uint8Array(await file.arrayBuffer());
+      if (pdfBytes.length > MAX_PDF_BYTES) return json({ error: 'The document is too large (1.5MB limit for now).' }, 413);
+      const doc = await PDFDocument.load(pdfBytes).catch(() => null);
+      if (!doc) return json({ error: 'The uploaded file is not a readable PDF.' }, 422);
+
+      const title = String(form.get('title') || 'Untitled Agreement').slice(0, 200);
+      const message = form.get('message') != null ? String(form.get('message')).slice(0, 2000) : null;
+      const expiresAt = form.get('expires_at') ? String(form.get('expires_at')) : null;
+      const remindersEnabled = String(form.get('reminders_enabled') ?? 'true') === 'true';
+      const reminderInterval = Number(form.get('reminder_interval_days')) || 3;
+      const isDraft = String(form.get('draft') ?? 'false') === 'true';
+      let signers: any[] = [];
+      let fields: any[] = [];
+      try {
+        signers = JSON.parse(String(form.get('signers_json') || '[]'));
+        fields = JSON.parse(String(form.get('fields_json') || '[]'));
+      } catch {
+        return json({ error: 'signers_json / fields_json is not valid JSON' }, 400);
+      }
+      if (!signers.some((s) => !s.is_cc)) return json({ error: 'At least one signer is required' }, 400);
+
+      const now = new Date().toISOString();
+      const pageCount = doc.getPageCount();
+
+      // The backing adhoc template lets a draft reload into the wizard later.
+      const tplId = `tpl-${crypto.randomUUID().slice(0, 8)}`;
+      this.sql.exec(
+        `INSERT INTO templates (id, name, created_by, pdf_blob, page_count, fields_json, roles_json, is_adhoc, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        tplId, title, user.email, pdfBytes, pageCount, JSON.stringify(fields),
+        JSON.stringify([...new Set(fields.map((f: any) => f.role).filter(Boolean))]), now,
+      );
+
+      const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
+      this.sql.exec(
+        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+                                  reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, crypto.randomUUID().slice(0, 8), title, message, user.email,
+        isDraft ? 'draft' : 'pending', pdfBytes, pageCount, tplId,
+        remindersEnabled ? 1 : 0, reminderInterval, expiresAt, now, now,
+      );
+
+      const created = this.createSubmittersAndFields(user, id, signers, fields, now);
+      if (created.error) return json({ error: created.error }, 400);
+
+      this.audit(id, isDraft ? 'created' : 'sent', user.email, user.name);
+      if (!isDraft) await this.inviteCurrentTurn(id);
+      const sub = this.one<any>(`SELECT * FROM submissions WHERE id = ?`, id);
+      return json(this.submissionOut(user, sub), 201);
+    }
+
+    // ── owner: create envelope from a saved template ──────────────────────
     if (path === '/api/submissions' && method === 'POST') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
       const body: any = await req.json();
-      const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
-      const publicUid = crypto.randomUUID().slice(0, 8);
-      const now = new Date().toISOString();
-      const pdfBytes = body.pdfBase64 ? dataUrlToBytes(`,${body.pdfBase64}`) : null;
-      const status = body.sendImmediately ? 'pending' : 'draft';
+      const tpl = this.one<any>(
+        `SELECT id, name, pdf_blob, page_count, fields_json FROM templates WHERE id = ? AND created_by = ?`,
+        String(body.template_id || ''), user.email,
+      );
+      if (!tpl) return json({ error: 'Template not found' }, 404);
+      const signers: any[] = body.signers || [];
+      if (!signers.some((s) => !s.is_cc)) return json({ error: 'At least one signer is required' }, 400);
 
+      const now = new Date().toISOString();
+      const isDraft = Boolean(body.draft);
+      const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
       this.sql.exec(
-        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, publicUid, String(body.title || 'Untitled Agreement'), String(body.message || ''),
-        user.email, status, pdfBytes, Number(body.pageCount) || 1, body.expiresAt ?? null, now, now,
+        `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+                                  reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, crypto.randomUUID().slice(0, 8),
+        String(body.title || tpl.name).slice(0, 200), body.message ?? null, user.email,
+        isDraft ? 'draft' : 'pending', tpl.pdf_blob, tpl.page_count || 1, tpl.id,
+        body.reminders_enabled === false ? 0 : 1, Number(body.reminder_interval_days) || 3,
+        body.expires_at ?? null, now, now,
       );
 
-      const submitters: any[] = [];
-      for (const [index, s] of (body.submitters || []).entries()) {
-        const subId = `subtr-${crypto.randomUUID().slice(0, 8)}`;
-        const token = newToken();
-        this.sql.exec(
-          `INSERT INTO submitters (id, submission_id, name, email, role, signing_order, token, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-          subId, id, String(s.name || s.email), String(s.email).trim().toLowerCase(),
-          s.role || 'Signer', Number(s.signingOrder) || index + 1, token, now,
-        );
-        submitters.push({ id: subId, name: s.name, email: s.email, role: s.role || 'Signer', token });
-      }
+      const fields = tpl.fields_json ? JSON.parse(tpl.fields_json) : [];
+      const created = this.createSubmittersAndFields(user, id, signers, fields, now);
+      if (created.error) return json({ error: created.error }, 400);
 
-      for (const f of body.fields || []) {
-        this.sql.exec(
-          `INSERT INTO submission_fields (id, submission_id, submitter_id, type, page, x, y, width, height, value, required, font_size, options_json, default_value)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          `fld-${crypto.randomUUID().slice(0, 8)}`, id,
-          f.submitterId || submitters[0]?.id || '', f.type, Number(f.page) || 0,
-          Number(f.x) || 0, Number(f.y) || 0, Number(f.w ?? f.width) || 0, Number(f.h ?? f.height) || 0,
-          f.value ?? '', f.required === false ? 0 : 1, f.font_size ?? null,
-          f.options ? JSON.stringify(f.options) : null, f.default_value ?? null,
-        );
-      }
-
-      this.audit(id, status === 'pending' ? 'sent' : 'created_draft', user.email, user.name);
-      if (status === 'pending') await this.inviteCurrentTurn(id);
-
-      return json({ id, publicUid, title: body.title, status, submitters, created_at: now }, 201);
+      this.audit(id, isDraft ? 'created' : 'sent', user.email, user.name);
+      if (!isDraft) await this.inviteCurrentTurn(id);
+      const sub = this.one<any>(`SELECT * FROM submissions WHERE id = ?`, id);
+      return json(this.submissionOut(user, sub), 201);
     }
 
-    // /api/submissions/:id[/pdf | /send | /remind | /cancel]
-    if (path.startsWith('/api/submissions/')) {
+    // ── owner: envelope lists ─────────────────────────────────────────────
+    if (path === '/api/submissions' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      const parts = path.split('/');
-      const id = parts[3];
-      const action = parts[4];
-      const sub = this.one<any>(
-        `SELECT id, public_uid, title, message, created_by, status, completed_at, expires_at, page_count, created_at FROM submissions
-          WHERE (id = ? OR public_uid = ?) AND created_by = ?`, id, id, user.email,
-      );
+      const mine = url.searchParams.get('mine') || 'sent';
+      let subs: any[];
+      if (mine === 'sign') {
+        subs = this.all<any>(
+          `SELECT s.* FROM submissions s
+            WHERE s.id IN (SELECT submission_id FROM submitters WHERE email = ? AND is_cc = 0)
+              AND s.created_by != ?
+            ORDER BY s.created_at DESC`, user.email.toLowerCase(), user.email,
+        );
+      } else {
+        subs = this.all<any>(
+          `SELECT * FROM submissions WHERE created_by = ? ORDER BY created_at DESC`, user.email,
+        );
+      }
+      return json(subs.map((s) => this.submissionOut(user, s)));
+    }
+
+    // ── owner: envelope detail + actions ──────────────────────────────────
+    const subMatch = path.match(/^\/api\/submissions\/([A-Za-z0-9_-]+)(?:\/(.+))?$/);
+    if (subMatch) {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const id = subMatch[1];
+      const action = subMatch[2];
+      const sub = this.one<any>(`SELECT * FROM submissions WHERE (id = ? OR public_uid = ?) AND created_by = ?`, id, id, user.email);
       if (!sub) return json({ error: 'Submission not found' }, 404);
+      const now = new Date().toISOString();
+
+      if (method === 'GET' && !action) return json(this.submissionOut(user, sub));
+
+      if (method === 'GET' && action === 'events') {
+        return json(this.all<any>(
+          `SELECT id, event_type, actor_email, actor_name, details_json, created_at FROM audit_events WHERE submission_id = ? ORDER BY created_at ASC`,
+          sub.id,
+        ).map((e) => ({
+          id: e.id,
+          event: e.event_type === 'invite_sent' ? 'sent'
+            : e.event_type === 'signer_verified' ? 'opened'
+            : e.event_type === 'created_draft' ? 'created'
+            : e.event_type,
+          created_at: e.created_at,
+          actor: e.actor_email
+            ? { id: e.actor_email, name: e.actor_name || e.actor_email, email: e.actor_email, is_external: e.actor_email.toLowerCase() !== user.email.toLowerCase() }
+            : null,
+          detail: e.details_json ? JSON.parse(e.details_json) : null,
+        })));
+      }
+
+      if (method === 'GET' && action === 'form-data') {
+        const submitters = new Map(this.all<any>(
+          `SELECT id, name, email, role, recipient_id, signed_at FROM submitters WHERE submission_id = ?`, sub.id,
+        ).map((s) => [s.id, s]));
+        const entries = this.all<any>(
+          `SELECT id, submitter_id, type, page, value FROM submission_fields WHERE submission_id = ? AND type != 'label'`, sub.id,
+        ).flatMap((f) => {
+          const s = submitters.get(f.submitter_id);
+          if (!s) return [];
+          return [{
+            submitter_id: s.id,
+            recipient: { id: s.recipient_id || s.email, name: s.name, email: s.email, is_external: true },
+            role: s.role || '',
+            field_id: f.id,
+            field_type: f.type,
+            page: f.page,
+            value: f.type === 'checkbox' ? f.value === 'true' : (f.value || null),
+            signed_at: s.signed_at || null,
+          }];
+        });
+        return json({ submission_id: sub.id, public_uid: sub.public_uid, title: sub.title, status: sub.status, entries });
+      }
 
       if (method === 'GET' && action === 'pdf') {
-        const blobRow = this.one<any>(`SELECT original_pdf_blob, completed_pdf_blob FROM submissions WHERE id = ?`, sub.id);
-        const pdfData = blobRow?.completed_pdf_blob || blobRow?.original_pdf_blob;
+        const pdfData = sub.completed_pdf_blob || sub.original_pdf_blob;
         if (!pdfData) return json({ error: 'PDF content not available' }, 404);
         return new Response(pdfData, {
           headers: {
@@ -634,10 +993,34 @@ export class PumasiSignService implements DurableObject {
         });
       }
 
+      if (method === 'PATCH' && !action) {
+        const body: any = await req.json();
+        this.sql.exec(
+          `UPDATE submissions SET title = ?, message = ?, updated_at = ? WHERE id = ?`,
+          String(body.title ?? sub.title).slice(0, 200),
+          body.message != null ? String(body.message).slice(0, 2000) : null,
+          now, sub.id,
+        );
+        this.audit(sub.id, 'corrected', user.email, user.name);
+        return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, sub.id)));
+      }
+
+      if (method === 'DELETE' && !action) {
+        if (sub.status !== 'draft') return json({ error: 'Only drafts can be deleted' }, 409);
+        this.sql.exec(`DELETE FROM submission_fields WHERE submission_id = ?`, sub.id);
+        this.sql.exec(`DELETE FROM submitters WHERE submission_id = ?`, sub.id);
+        this.sql.exec(`DELETE FROM audit_events WHERE submission_id = ?`, sub.id);
+        this.sql.exec(`DELETE FROM submissions WHERE id = ?`, sub.id);
+        if (sub.template_id) this.sql.exec(`DELETE FROM templates WHERE id = ? AND is_adhoc = 1`, sub.template_id);
+        return json({ ok: true });
+      }
+
       if (method === 'POST' && (action === 'send' || action === 'remind')) {
         if (sub.status === 'draft') {
-          this.sql.exec(`UPDATE submissions SET status = 'pending', updated_at = ? WHERE id = ?`, new Date().toISOString(), sub.id);
+          this.sql.exec(`UPDATE submissions SET status = 'pending', updated_at = ? WHERE id = ?`, now, sub.id);
           this.audit(sub.id, 'sent', user.email, user.name);
+        } else if (sub.status !== 'pending') {
+          return json({ error: 'This envelope is not awaiting signatures' }, 409);
         } else {
           this.audit(sub.id, 'reminded', user.email, user.name);
         }
@@ -646,20 +1029,65 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (method === 'POST' && action === 'cancel') {
-        this.sql.exec(`UPDATE submissions SET status = 'cancelled', updated_at = ? WHERE id = ?`, new Date().toISOString(), sub.id);
-        this.audit(sub.id, 'cancelled', user.email, user.name);
+        const body: any = await req.json().catch(() => ({}));
+        this.sql.exec(`UPDATE submissions SET status = 'cancelled', updated_at = ? WHERE id = ?`, now, sub.id);
+        this.audit(sub.id, 'cancelled', user.email, user.name, undefined, body.reason ? { reason: String(body.reason) } : undefined);
         return json({ ok: true });
       }
 
-      if (method === 'GET' && !action) {
-        const submitters = this.all(
-          `SELECT id, name, email, role, signing_order, token, status, signed_at FROM submitters WHERE submission_id = ? ORDER BY signing_order ASC`, sub.id,
+      if (method === 'POST' && action === 'archive') {
+        this.sql.exec(`UPDATE submissions SET archived_at = ? WHERE id = ?`, now, sub.id);
+        return json({ ok: true });
+      }
+
+      if (method === 'POST' && action === 'unarchive') {
+        this.sql.exec(`UPDATE submissions SET archived_at = NULL WHERE id = ?`, sub.id);
+        return json({ ok: true });
+      }
+
+      if (method === 'POST' && action === 'copy') {
+        const newId = `sub-${crypto.randomUUID().slice(0, 10)}`;
+        this.sql.exec(
+          `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, page_count, template_id,
+                                    reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
+           SELECT ?, ?, title, message, created_by, 'draft', original_pdf_blob, page_count, template_id,
+                  reminders_enabled, reminder_interval_days, NULL, ?, ? FROM submissions WHERE id = ?`,
+          newId, crypto.randomUUID().slice(0, 8), now, now, sub.id,
         );
-        const fields = this.fieldDefs(sub.id);
-        const audit = this.all(
-          `SELECT event_type, actor_email, actor_name, ip_address, created_at FROM audit_events WHERE submission_id = ? ORDER BY created_at ASC`, sub.id,
-        );
-        return json({ ...sub, submitters, fields, audit });
+        const idMap = new Map<string, string>();
+        for (const s of this.all<any>(`SELECT * FROM submitters WHERE submission_id = ?`, sub.id)) {
+          const nid = `subtr-${crypto.randomUUID().slice(0, 8)}`;
+          idMap.set(s.id, nid);
+          this.sql.exec(
+            `INSERT INTO submitters (id, submission_id, name, email, role, signing_order, token, status, is_cc, recipient_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+            nid, newId, s.name, s.email, s.role, s.signing_order, newToken(), s.is_cc ?? 0, s.recipient_id ?? null, now,
+          );
+        }
+        for (const f of this.all<any>(`SELECT * FROM submission_fields WHERE submission_id = ?`, sub.id)) {
+          this.sql.exec(
+            `INSERT INTO submission_fields (id, submission_id, submitter_id, type, page, x, y, width, height, value, required, font_size, options_json, default_value, field_role)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+            `fld-${crypto.randomUUID().slice(0, 8)}`, newId, idMap.get(f.submitter_id) ?? '',
+            f.type, f.page, f.x, f.y, f.width, f.height,
+            f.required ?? 1, f.font_size ?? null, f.options_json ?? null, f.default_value ?? null, f.field_role ?? null,
+          );
+        }
+        this.audit(newId, 'created', user.email, user.name, undefined, { copied_from: sub.id });
+        return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, newId)), 201);
+      }
+
+      const resendMatch = action?.match(/^submitters\/([A-Za-z0-9_-]+)\/resend$/);
+      if (method === 'POST' && resendMatch) {
+        const target = this.one<any>(`SELECT id, status FROM submitters WHERE id = ? AND submission_id = ?`, resendMatch[1], sub.id);
+        if (!target) return json({ error: 'No such signer' }, 404);
+        if (target.status !== 'pending') return json({ error: 'That signer has already finished' }, 409);
+        await this.inviteCurrentTurn(sub.id, target.id);
+        return json({ ok: true });
+      }
+
+      if (method === 'POST' && (action === 'save-as-template' || action === 'retry-completion' || action === 'replace-document')) {
+        return json({ error: 'Not implemented yet in this edition' }, 501);
       }
 
       return json({ error: 'Endpoint not found' }, 404);
@@ -736,7 +1164,7 @@ export class PumasiSignService implements DurableObject {
         return json({ error: 'Not authorized for this signing session' }, 401);
       }
       const me = this.one<any>(
-        `SELECT id, submission_id, name, email, role, status, signing_order FROM submitters WHERE id = ?`, submitterId,
+        `SELECT id, submission_id, name, email, role, status, signing_order, is_cc FROM submitters WHERE id = ?`, submitterId,
       );
       if (!me) return json({ error: 'Unknown signer' }, 404);
       const submission = this.one<any>(
@@ -746,8 +1174,11 @@ export class PumasiSignService implements DurableObject {
 
       if (!signMatch[2] && method === 'GET') {
         const fields = this.fieldDefs(submission.id);
+        const myFieldIds = new Set(this.all<{ id: string }>(
+          `SELECT id FROM submission_fields WHERE submission_id = ? AND submitter_id = ?`, submission.id, me.id,
+        ).map((r) => r.id));
         const roleNames: Record<string, string> = {};
-        for (const s of this.all<any>(`SELECT name, role FROM submitters WHERE submission_id = ?`, submission.id)) {
+        for (const s of this.all<any>(`SELECT name, role FROM submitters WHERE submission_id = ? AND is_cc = 0`, submission.id)) {
           roleNames[s.role || 'Signer'] = s.name;
         }
         const savedSig = this.one<{ id: string }>(
@@ -762,11 +1193,8 @@ export class PumasiSignService implements DurableObject {
             expires_at: submission.expires_at,
           },
           template: { id: submission.id, page_count: submission.page_count || 1, fields },
-          my_fields: fields.filter((f: any) => {
-            const row = this.one<{ submitter_id: string }>(`SELECT submitter_id FROM submission_fields WHERE id = ?`, f.id);
-            return row?.submitter_id === me.id;
-          }).map((f: any) => f.id),
-          my_status: me.status,
+          my_fields: fields.filter((f: any) => myFieldIds.has(f.id)).map((f: any) => f.id),
+          my_status: outSubmitterStatus(me.status),
           my_turn: this.submitterTurn(me),
           saved_signature_id: savedSig?.id ?? null,
           role_names: roleNames,
@@ -834,7 +1262,7 @@ export class PumasiSignService implements DurableObject {
         this.audit(submission.id, 'signed', me.email, me.name, clientIp, { userAgent });
 
         const remaining = this.one<{ n: number }>(
-          `SELECT COUNT(*) AS n FROM submitters WHERE submission_id = ? AND status != 'signed'`, submission.id,
+          `SELECT COUNT(*) AS n FROM submitters WHERE submission_id = ? AND status != 'signed' AND is_cc = 0`, submission.id,
         );
 
         if ((remaining?.n ?? 0) === 0) {
@@ -889,7 +1317,7 @@ export class PumasiSignService implements DurableObject {
     return json({ error: 'Endpoint not found' }, 404);
   }
 
-  /** All signed: stamp, certify, store, notify everyone. */
+  /** All signed: stamp, certify, store, notify everyone (CCs included). */
   private async finalize(submissionId: string, now: string): Promise<void> {
     const sub = this.one<any>(
       `SELECT id, public_uid, title, created_by, original_pdf_blob FROM submissions WHERE id = ?`, submissionId,
@@ -897,7 +1325,7 @@ export class PumasiSignService implements DurableObject {
     if (!sub) return;
 
     const allSubmitters: SignerInfo[] = this.all<any>(
-      `SELECT id, name, email, role, signed_at, ip_address, user_agent, signature_blob FROM submitters WHERE submission_id = ?`,
+      `SELECT id, name, email, role, signed_at, ip_address, user_agent, signature_blob FROM submitters WHERE submission_id = ? AND is_cc = 0`,
       submissionId,
     ).map((s: any) => ({
       id: s.id, name: s.name, email: s.email, role: s.role,

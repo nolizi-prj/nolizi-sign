@@ -27,24 +27,31 @@ completion emails.
 ## The gap: frontend contract vs worker API
 
 The Vue frontend is the mature FastAPI-era app (~40 endpoints). The worker now
-implements the signer's full path in that contract (`/api/sign/token/*`,
-`/api/sign/:id`, `/api/files/document-preview|signed-pdf|signature`) plus auth,
-branding, templates-lite, and submissions-lite. Still missing, in the order
-they block the product:
+implements, verified against the real UI in prod (2026-08-30, second pass):
 
-1. **Sender flow the UI actually uses** — `POST /submissions/adhoc`,
-   `merged-document`, `PATCH /submissions/:id`, per-submitter resend. The API
-   `POST /api/submissions` works (that's what the E2E used) but the SendView
-   wizard speaks adhoc/draft.
-2. **Dashboard/envelope views** — `SubmissionOut` shape parity (counts,
-   archived, drafts), `/submissions/:id/{copy,archive,unarchive,void}`.
-3. **Template builder** — template CRUD + sharing + build view contract.
-4. **Users/admin** — multi-seat orgs. Today one user = one workspace.
-5. **Attachments** — attachment fields (`/sign/:id/attachment`), stored files.
-6. **Storage limits** — PDFs live as DO SQLite blobs (2MB/row ceiling);
-   R2 binding exists (`storage/r2.ts`) but is unwired. Move blobs to R2 before
-   real documents arrive.
-7. **OAuth sign-in** — LoginView's Google/Microsoft buttons were removed until
+- the signer's full path (`/api/sign/token/*`, `/api/sign/:id`
+  signature/complete/decline, `/api/files/*`), auth, branding;
+- the sender flow the wizard speaks — recipient directory (`GET/POST /users`),
+  `POST /submissions/adhoc` (multipart) + `adhoc/merged-document` (PDF/PNG/JPG
+  merge), template-mode `POST /submissions`, drafts, `PATCH`, `DELETE`;
+- dashboard/envelope parity — `SubmissionOut` with template brief, sender,
+  submitters (CC flags, order groups), `?mine=sent|sign`, `/events`,
+  `/form-data`, `send`, `remind`, `cancel`, `archive`, `unarchive`, `copy`,
+  per-submitter `resend`. Dashboard, envelope detail (activity timeline, form
+  data), and the send wizard all render and flow against it.
+
+Still missing, in the order they block the product:
+
+1. **Template builder** — template CRUD + sharing + build view contract
+   (list/create exist; builder-view parity, sharing, copy/archive do not).
+   `save-as-template`, `retry-completion`, `replace-document` return 501.
+2. **Users/admin** — multi-seat orgs. Today one user = one workspace;
+   recipients are a per-owner address book, not accounts.
+3. **Attachments** — attachment fields (`/sign/:id/attachment`), stored files.
+4. **Storage limits** — PDFs live as DO SQLite blobs; uploads are capped at
+   1.5MB (2MB/row ceiling). R2 binding exists (`storage/r2.ts`) but is
+   unwired. Move blobs to R2 before real documents arrive.
+5. **OAuth sign-in** — LoginView's Google/Microsoft buttons were removed until
    the worker implements the endpoints; email codes are the only door.
 
 Single global DO (`pumasi-sign-main`) is fine at this scale; per-org sharding
