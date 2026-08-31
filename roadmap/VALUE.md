@@ -110,7 +110,9 @@ database server to operate.
 "you could" is an architectural statement, not a legal one. This claim is
 **suspended** until Q-021 resolves — it may not be used in public copy before
 then, and the landing page's current "Apache-2.0 (Open Source)" row is
-[`BACKLOG.md`](BACKLOG.md) item 1.
+[`BACKLOG.md`](BACKLOG.md) **B1**, in that file's Blocked section (it was item 1
+when this was written; the numbered order now holds only entries a coder may
+execute today).
 *Falsified by:* a deployment that needs a component not in this repository; a
 resolved Q-021 that declines to license the code.
 
@@ -127,8 +129,12 @@ project is built to notice.
 
 - **Not "open source."** No licence (§1, C5).
 - **Not "beta," and not "reliable for strangers."** [`STAGE.md`](STAGE.md) §2
-  lists five reasons, the largest being that the deployed tree carries two
-  tests and no CI gate.
+  lists five reasons, the largest being that the deployed tree carries **two
+  tests, both on the PDF stamper**. *Corrected 2026-08-31 (third evaluation):*
+  this line used to end "and no CI gate", which is no longer true — a `service`
+  CI job exists since `ef851d6` and the *merge* gate runs that suite since
+  `d18d534`. What both of them run there is two tests, which is the part that
+  still holds the label back (`BACKLOG.md` item 1).
 - **Not a QES / eIDAS-qualified signature.** The product produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware the product does not touch. (The landing page states
@@ -144,3 +150,26 @@ At every product evaluation (role duty 4): does the release just shipped
 deliver a claim above, and does any claim now have a live falsifier? A claim
 that acquires one is *demoted in this file in the same commit that finds it* —
 the same rule `STAGE.md` runs on.
+
+**Third evaluation, 2026-08-31, against `main` @ `d18d534` and the live host.**
+Release checked: [`2026-08-31-pumasi-sign-sign-in-again.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-08-31-pumasi-sign-sign-in-again.md)
+(`pumasi/DECISIONS.md` **Q-027**, 7-day window open).
+
+- **Does it deliver a claim above? No, and that is worth stating rather than
+  padding.** The release repairs the *entry path* — a signed-out user's way
+  back in — and fixes what the merge gate measures. No claim C1–C6 is about
+  either. C3 is the nearest and is not touched: it is about an **external
+  recipient** signing from an email without an account, and #7 was on the
+  internal sign-in button.
+- **Does any claim acquire a live falsifier? No.** C1, C2, C4 and C6 were
+  re-read against `d18d534` and nothing in that commit touches the stamping
+  path, the absence of a meter, branding, or `MARKET.md`'s cited rows. C5
+  remains **suspended** under Q-021, unchanged.
+- **One thing this evaluation notes for the next one.** Nothing in this file
+  promises that a user can get back into the product, which is why a live
+  `404` on the sign-in button falsified no claim here for two evaluations while
+  being the most serious thing on `STAGE.md`. That is a gap in this file's
+  coverage, not a reason to relax: the honest response is that C1–C6 are about
+  *what the product does when you are in it*, and the way in is assumed. Left
+  as an observation for whoever next writes a claim, rather than inventing one
+  to fit a release that has already shipped.

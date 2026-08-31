@@ -3,8 +3,8 @@
 **Owned by the product-manager role** ([`pumasi-ops/roles/product-manager.md`](https://github.com/pumasi-ai/pumasi-ops/blob/main/roles/product-manager.md), duty 5).
 First pass 2026-08-30, steward-directed: *"introduce very similar UI and UX
 [to the incumbent] in pumasi sign — let these items in the queue."*
-**Reordered 2026-08-31 (second reorder)** after the product evaluation that
-re-measured this file against `main` @ `ef851d6`; the reasoning is in that
+**Reordered 2026-08-31 (third reorder)** after the product evaluation that
+re-measured this file against `main` @ `d18d534`; the reasoning is in that
 commit's message, and the steward vetoes by reverting.
 
 One list, features and bugs together, because a priority that cannot compare
@@ -12,15 +12,24 @@ them is not a priority. Every entry points at its source and carries one line
 of why-here. **The top of this file is what the project manager's next coder
 packet builds.**
 
-**That last sentence is now load-bearing, and it is why this reorder exists.**
-The previous top two entries were both stale: item 1 ranked pending in full
-though halves (a) and (c) merged at `a49f594`, and item 2 was delivered at
-`ef851d6`. Worse, what remained of item 1 was **not a build** — (b) waits on
-`pumasi/DECISIONS.md` **Q-021** and (d) is a deploy, **Q-012** — so a coder
-packet taking the top of this file would have delivered nothing. Entries that
-no coder may execute are no longer in the numbered order; they are in
-[Blocked](#blocked--not-in-the-build-order-until-a-steward-answers) below, and
-the numbered order is again a list of things somebody can build tomorrow.
+**This reorder exists for the same reason the last one did, and that is the
+point.** The previous top two entries — #7's raw 404 and the merge gate that
+did not run the served tree — were **both delivered in one packet** at
+`d18d534` (coder job `0037`, `spec/0003`, release note
+[`2026-08-31-pumasi-sign-sign-in-again.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-08-31-pumasi-sign-sign-in-again.md),
+`pumasi/DECISIONS.md` **Q-027**), exactly as both entries' own text asked. They
+are in [Retired](#retired) below, with what this evaluation verified itself
+rather than what the job reported. Until this commit nothing in this repository
+said what a coder should build next on this product; **that entry is now item 1
+and it is named as such.**
+
+**One substantive change of rank, not a shift-up.** The old item 4 — widening
+the deployed tree's tests — moves from fourth to first, past three entries that
+were ahead of it. The reason is what item 2's delivery *did*: the root
+`npm test` now prints `# pass 2 · # fail 0` from `service/`, so `GATE: PASS`
+on this repository carries a number about production for the first time, and
+that number is **2**, both assertions against one file. Every release note from
+here quotes it. See item 1. The rest keep their relative order.
 
 Context the ordering assumes: UX-parity phase 1 is **delivered** (PR #1, merged
 `70c692e`). The parity source of truth is the clean-room spec
@@ -30,237 +39,172 @@ below) with the phase map in
 from the spec, never from the tour screenshots** (product-hunt `TOUR.md`,
 "Studying clean").
 
-**Why the parity items are still down at 8.** They did not lose their mandate.
-Six items were in front of them at the last reorder; two of those six are now
-retired, two arrived from coder job `0032`, and one moved into Blocked. The
-count is unchanged and so is the reason: each of items 1–7 is either something
-a real user met, something a rule requires, or the thing that makes an "it
-works" claim below it checkable. Each is small. The parity work resumes at
-item 8 and is otherwise untouched.
+**Why the parity items are now at 6.** They did not lose their mandate and they
+did not move: two entries left the front of this list by being built, so the
+count in front of them fell from seven to five. Each of items 1–5 is either
+something a real user met, something a rule requires, or the thing that makes
+an "it works" claim below it checkable. The parity work resumes at item 6 and
+is otherwise untouched.
 
 ---
 
 ## The order
 
-**1 · #7: "sign in again" sends the user to a raw 404 — the cause, measured** —
-source: issue [#7](https://github.com/pumasi-ai/pumasi-sign/issues/7)
-(`accepted`, `priority: high`). **This entry was "reproduce it"; it is now
-"here is the cause".** `SignedOutView.vue:26` renders *Sign in again* as
-`<a :href="signInUrl">`, and `signInUrl` is `loginRedirectUrl("/")` =
-`/api/auth/login?next=%2F` (`utils/http.ts:30`) — a full-page navigation, not
-a router push. Measured against the deployed tree on 2026-08-31:
+**1 · Test the deployed tree beyond its PDF stamper — the highest build entry**
+— source: coder job `0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`),
+`pumasi/DECISIONS.md` **Q-018** and **Q-025**, [`STAGE.md`](STAGE.md) §2.1,
+`CLAUDE.md` (*"test coverage here is thin and you should know it before you
+trust it"*). **This is what the next coder packet takes.**
+
+**Why it moved to the top, measured this tick and not inherited.** The entry
+above it was delivered, and delivering it is what promoted this one. The root
+`npm test` — step 1 of `pumasi/tools/gate.sh`, and with `main` unprotected the
+whole gate — now installs, builds and runs `service/`'s suite. Run by this
+evaluation at `d18d534`:
 
 ```
-$ curl -s -i 'https://sign.pumasi.ai/api/auth/login?next=%2F'
-HTTP/2 404
-{"error":"Endpoint not found"}
+Test Files  6 passed (6) · Tests  85 passed (85)
+# pass 2 · # fail 0
+assert-service-suite-ran: 2 passing, 0 failing, from 2 compiled
 ```
 
-So the user is handed the worker's error JSON, rendered raw in the browser.
-**`GET /api/auth/login` is a `backend/` route** — `backend/app/routers/auth.py:82`
-is `@router.get("/login")` under prefix `/api/auth` — and the worker defines
-**no** `GET` under `/api/auth/login` at all: `service/src/durable.ts` has only
-`POST /api/auth/login/request` (`:775`) and `POST /api/auth/login/verify`
-(`:798`). The SPA calls a route that exists only in the tree nobody reaches.
+So `GATE: PASS` here now carries a number about the tree that answers
+`sign.pumasi.ai` — and the number is **2**. Both assertions are against one
+file. The release note that shipped the gate says so in its own words: *"the
+gate no longer reports a number that excludes production — not that production
+is now well covered."* Making that number mean something is now the
+highest-leverage build on this product, because every release note and every
+stage claim from here quotes it.
 
-**Every CI job was green on this bug, and one of them was green *because* of
-it.** Run 33420378497 at `ef851d6` is `backend` ✓, `frontend` ✓, `service` ✓,
-`e2e` ✓ — while the button 404s in production. The `e2e` job is the reason to
-care: `frontend/playwright.config.ts` boots `uvicorn`, or in CI a Docker image
-built from the root `Dockerfile`, and both are **`backend/`** — the one tree in
-which `GET /api/auth/login` exists. So the six Playwright specs exercise a
-sign-in path that works, on a server no user reaches, and would keep passing
-however long this defect stayed live. That is L-006 and L-009 in one artefact,
-and it is item 4's strongest argument.
+Both service test files were **read in full** at `d18d534` rather than counted,
+and the finding is worse than "two tests":
 
-Why here: it is the only `priority: high` defect that is **live, on the entry
-path, and buildable today** — the other one, #8, is Blocked. A signed-out user
-who cannot get back in is the plainest counterexample to the next stage's
-whole promise, and the cause is no longer a mystery to be budgeted for. It is
-also **[L-009](https://github.com/pumasi-ai/governance/blob/main/lessons/L-009-two-paths-one-claim.md)
-in this product for the third time** (after Q-018's `dev-login` 404 and its
-`establishSession` domain-gate divergence): the frontend was written against
-`backend/`, and `backend/` is not what serves users. Which of the two repairs
-is right — point the button at `loginPageUrl("/")`, the SPA `/login` page that
-already exists one function below it in the same file, or add the missing
-route to the worker — is the coder's call with a spec, and it decides whether
-the fix lands in `frontend/` or in `service/`. **If it lands in `service/`,
-item 2 below covers it and item 2 should ride in the same packet.**
-
-**2 · Make `GATE: PASS` cover the tree users actually meet** — source: coder
-job `0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`), `pumasi/DECISIONS.md`
-**Q-025** rider (a), [`STAGE.md`](STAGE.md) §2.1. **CI now runs the served
-tree; the merge gate still does not.** Re-measured 2026-08-31, not inherited:
-`pumasi/tools/gate.sh:25` is `if npm test; then echo "   tests: PASS"`, and
-this repository's root `package.json` `test` script is exactly
-`cd frontend && npm run test:unit && npx vue-tsc -b --force`. The string
-`service` occurs **zero** times in that script and zero times in `gate.sh`. So
-a coder can print `GATE: PASS` here having run zero service tests — on the
-only tree that answers `sign.pumasi.ai`.
-
-**And the gate is the whole gate.** Measured this tick:
-`GET /repos/pumasi-ai/pumasi-sign/branches/main/protection` → **404 "Branch
-not protected"**. The `service` CI job reports; it blocks nothing. Between a
-change and `main` there is one check, it is run by hand by the author, and it
-does not run the deployed tree's suite. That is Q-025's question — *is
-`GATE: PASS` an agent's own report?* — in its sharpest form in the fleet, and
-it is sharper here than on `pumasi-booking` because here CI **does** run the
-served tree and the gate still does not.
-
-Why here rather than at 1: the same sentence that put the old item 2 above the
-old item 3 no longer holds. When CI covered `service/` with nothing, an
-ungated suite meant the code was untested; now CI runs it on every push, so
-the backstop exists and this entry is about what a *string in a release note*
-evidences, not about whether production code is exercised. That is real and it
-is one rung below a user who cannot sign in. Scope: the root `package.json`
-`test` script, plus whatever `service` needs to be runnable from the root
-(`npm ci` and `npm run build` in `service/` before `npm test` — `dist/` is
-`.gitignore`d, which is the trap `.github/scripts/assert-service-suite-ran.sh`
-and frozen case A-103 exist for). **Do not shrink the frontend half to make
-room.** Left alone by `0032` on purpose: the **old** BACKLOG item 2 (now
-Retired) and Q-018(b) both said
-*"CI gains a job"* in those words, and the root `package.json` was authored one
-commit earlier under `spec/0001`'s scope.
-
-**An objection to this entry sitting at 2 rather than 1, recorded because it is
-a good one.** A cross-family review of this ranking (gemini, the one family
-answering — see [`STAGE.md`](STAGE.md) §0) argued for swapping: that calling CI
-a "backstop" over-claims when branch protection is absent, and that item 1 is
-*caused* by this gap, so fixing #7 first means pushing a hotfix through the
-pipeline that produced it. **The first half lands and the wording above was
-written to concede it.** The second half does not survive checking, and
-checking it found something worse: this entry's fix is the root `test` script
-running `service`'s suite, and that suite could be *complete* and still not
-catch item 1, which is a frontend `href` pointing at a route the worker lacks.
-The suite that should have caught it — `e2e` — passes, because it drives
-`backend/`. Nothing in the current four jobs could go red on item 1. So the two
-entries are not cause and effect; they are two different holes, and the one
-with a user standing in it goes first. The tiebreak that settles it: if a
-packet takes only the top item and stops, ordering this first leaves a user
-unable to sign in for another cycle, while ordering #7 first leaves one merge
-cycle whose gate evidence is weaker than it should be — on a branch where CI
-still *reports*, even though it does not block. The first is worse.
-**Both entries say it in their own text: take them in one packet.**
-
-**3 · #6: the colour buttons touch — on three views, not one** — source: issue
-[#6](https://github.com/pumasi-ai/pumasi-sign/issues/6) (`accepted`,
-`priority: normal`). Re-measured at `ef851d6` and **wider than this entry
-previously recorded**. This frontend has no Tailwind — Vuetify `^3.13.0` only,
-whose utility is `ga-*`; `.ga-2` is in `vuetify.css` and `.gap-2` is not
-(counted: 1 and 0). Inert `gap-*` classes are in **three** views:
-
-- `BrandingView.vue:113`, `:128`, `:142` — the reported surface.
-- `LoginView.vue:119` — **not previously listed**, and it is the sign-in page,
-  the same surface item 1 is about.
-- `LandingView.vue` (`:41`, `:48`, `:53`, `:90`) — these *do* render, because
-  that file defines `.gap-2/.gap-3/.gap-4` in its own `<style scoped>` block
-  (`:260`–`:262`). Left alone or converted for consistency; the coder's call.
-
-Why here: three characters per site, a real user noticed, and `LoginView.vue`
-means it now **ships free alongside item 1**, which is already in that file's
-neighbourhood.
-
-**4 · Test the deployed tree beyond its PDF stamper** — source: coder job
-`0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`), `pumasi/DECISIONS.md`
-**Q-018**, [`STAGE.md`](STAGE.md) §2.1, `CLAUDE.md` (*"test coverage here is
-thin and you should know it before you trust it"*). Both service test files
-were **read in full** this tick rather than counted, and the finding is worse
-than "two tests":
-
-- `service/src/test/stamping.test.ts` (89 lines) and
-  `service/src/test/e2e-workflow.test.ts` (107 lines) have **identical import
-  lists**: `node:test`, `node:assert/strict`, `pdf-lib`, and
-  `stampAndCertifyPdf` from `../core/stamping.js`. Nothing else. They are two
-  builds of the same scenario against the same pure function.
-- **`e2e-workflow.test.ts` is not an end-to-end test of anything.** It calls
-  no route, starts no worker, touches no store. A reader of the file *name* —
-  or of `STAGE.md`'s table row — will over-read the coverage, and this
-  evaluation nearly did.
+- `service/src/test/stamping.test.ts` and `service/src/test/e2e-workflow.test.ts`
+  have **identical import lists**: `node:test`, `node:assert/strict`, `pdf-lib`,
+  and `stampAndCertifyPdf` from `../core/stamping.js`. Nothing else. They are
+  two builds of the same scenario against the same pure function.
+- **`e2e-workflow.test.ts` is not an end-to-end test of anything.** It calls no
+  route, starts no worker, touches no store. A reader of the file *name* — or of
+  a `# pass 2` in a release note — will over-read the coverage.
 - Both assert **shape, not content**: stamped bytes longer than original, page
   count 2, two 64-char hex hashes, and `notEqual(originalHash, completedHash)`.
   No assertion that a signer's name, a date or a checkbox value reached the
   page. `notEqual` on the hashes passes for *any* mutation, including a wrong
   one.
-- Covered by nothing: `durable.ts` (sessions, envelopes, signing, the whole
-  API surface, and the `establishSession` domain gate Q-018 flags as diverging
-  from `backend/`), `worker.ts`, `storage/r2.ts`, `mail.ts`, `feedback.ts`,
+- Covered by nothing: `durable.ts` (sessions, envelopes, signing, the whole API
+  surface, and the `establishSession` domain gate Q-018 flags as diverging from
+  `backend/`), `worker.ts`, `storage/r2.ts`, `mail.ts`, `feedback.ts`,
   `convert/graph.ts`.
 - **And the suite that would cover a route points at the wrong tree.**
   `frontend/playwright.config.ts` boots `uvicorn` locally, or in CI a Docker
-  image built from the root `Dockerfile` — `backend/`, both times. The six e2e
-  specs therefore assert that a *FastAPI* server signs users in. Item 1 is the
-  proof that this is not a theoretical complaint: those specs are green on a
-  live production 404. **This is a third thing, distinct from the two above** —
-  the unit suite is thin, the merge gate does not run it, and the integration
-  suite drives the wrong server — and a packet on this item should say which of
-  the three it is taking.
+  image built from the root `Dockerfile` — `backend/`, both times.
 
-Why here: now that the `service` CI job exists, *"the tests pass"* finally says
-something about production — and what it says is "the PDF stamper works". This
-entry decides how much more it should say. Ranked below items 1–3 because it is
-the only one of the four that is days rather than characters, and CLAUDE.md
-correctly calls widening it this file owner's call rather than a side errand.
-Suggested first slice, so a packet has a shippable edge: `establishSession`'s
-account-creation rule (the Q-018 divergence, and the one with a live user
-consequence), then session validation, then envelope state transitions.
+**#7 is now the proof rather than the argument.** The old item 1 was a live
+`404` on the sign-in path, and **no job in this repository could have gone red
+on it**: `service`'s two tests do not touch routing, and the six Playwright
+specs drive the one tree where the missing route existed. Re-checked by this
+evaluation at `d18d534`: run
+[33430138500](https://github.com/pumasi-ai/pumasi-sign/actions/runs/33430138500)
+is `backend` ✓ `frontend` ✓ `service` ✓ `e2e` ✓ — and the defect is **still
+live in production** (item 1's fix is merged and undeployed; see
+[Blocked](#blocked--not-in-the-build-order-until-a-steward-answers) and
+[`STAGE.md`](STAGE.md) §5). A green estate over a live defect is the whole of
+this entry's case.
 
-**5 · The feedback screenshot must be attached, not pre-attached** — source:
+**Three distinct things, and a packet should say which it takes:** the unit
+suite is thin, the merge gate's number is two, and the integration suite drives
+the wrong server. Suggested first slice, so a packet has a shippable edge:
+`establishSession`'s account-creation rule (`service/src/durable.ts:655` — the
+Q-018 divergence, and the one with a live user consequence), then session
+validation, then envelope state transitions. **Boundary the packet must
+respect:** a test that *records* what the worker does today is ordinary work; a
+test written to assert that the worker's account rule is the *correct* one
+would be answering Q-018, which is the steward's. Characterize, do not adjudicate.
+
+**2 · #6: the colour buttons touch — on three views, not one** — source: issue
+[#6](https://github.com/pumasi-ai/pumasi-sign/issues/6) (`accepted`,
+`priority: normal`). Re-measured at `d18d534` and unchanged from the last
+reorder. This frontend has no Tailwind — Vuetify `^3.13.0` only, whose utility
+is `ga-*`; `.ga-2` is in `vuetify.css` and `.gap-2` is not (counted this tick:
+1 and 0). Inert `gap-*` classes are in **three** views:
+
+- `BrandingView.vue:113`, `:128`, `:142` — the reported surface.
+- `LoginView.vue:119` — the sign-in page.
+- `LandingView.vue` (`:41`, `:48`, `:53`, `:90`) — these *do* render, because
+  that file defines `.gap-2/.gap-3/.gap-4` in its own `<style scoped>` block
+  (`:260`–`:262`). Left alone or converted for consistency; the coder's call.
+
+Why here: three characters per site and a real user noticed. **The free ride
+this entry used to claim is spent, and that is recorded rather than left to
+look like inaction.** The last reorder ranked it here partly because
+`LoginView.vue` would ship alongside the #7 fix; `d18d534` touched
+`SignedOutView.vue` and `utils/http.ts` and **not** `LoginView.vue`, so the fix
+is now standalone. It stays at 2 anyway: it is the smallest entry in the file
+and the only remaining one a user reported and can see.
+
+**3 · The feedback screenshot must be attached, not pre-attached** — source:
 `PRODUCT-RULES.md` **PR-2** (v1.0, read fresh this packet from `pumasi` branch
-`worktree-product-rules` `0115758`; still not on `pumasi` main — that is
-**Q-017**, and absence from main is not compliance), CHARTER §5.2.
-Re-checked at `ef851d6` and **unchanged**: opening the dialog sets a fallback
+`worktree-product-rules` `0115758`; **still not on `pumasi` main** — that is
+**Q-017**, now flagged by five consecutive evaluations, and absence from main
+is not compliance), CHARTER §5.2.
+Re-checked at `d18d534` and **unchanged**: opening the dialog sets a fallback
 canvas as the attachment immediately (`FeedbackDialog.vue:185`–`188`,
 `screenshotIsAuto.value = true`) and then replaces it asynchronously with a
 real `html2canvas(document.body)` capture (`:193`–`:197`). The user presses
 nothing. PR-2 says *"a screenshot travels only when the user attaches one"*.
 The user sees it and can remove it (`removeScreenshot`, `:201`), so today this
-is opt-out and informed — but in an e-signature product the page being
-captured is somebody's contract, and §5.2 says *never the user's own material*.
-Make it a button the user presses. Why here: PR-2 binds at the `beta`
-promotion, this is the only clause it fails, and it is cheaper to fix now than
-to hold a promotion for.
+is opt-out and informed — but in an e-signature product the page being captured
+is somebody's contract, and §5.2 says *never the user's own material*. Make it
+a button the user presses. Why here: PR-2 binds at the `beta` promotion, this is
+the only clause it fails, and it is cheaper to fix now than to hold a promotion
+for. **This is the deployed behaviour, not a branch one** — the feedback widget
+that produced issues #4–#9 is the one live on `sign.pumasi.ai`.
 
-**6 · One version number, and put it in the reports** — source:
+**4 · One version number, and put it in the reports** — source:
 `PRODUCT-RULES.md` **PR-1**, which binds *always, from the first commit*, and
-is not met. **Narrowed since the last reorder**: a root `package.json` now
-exists (authored under `spec/0001` for `gate.sh`), so the missing piece is no
-longer the file. Measured at `ef851d6`: the root `package.json` carries **no
-`version` field** — deliberately, and it says so in its own `description`, to
-avoid taking this item inside a packet scoped to something else;
-`frontend/package.json` reads `0.0.0` and `service/package.json` reads `0.1.0`
-(two hand-maintained copies — L-007); no version is visible to a user anywhere
-in the SPA; there is no `/version` endpoint; and `FeedbackDialog.vue::buildContext`
-(`:105`–`:122`) sends **thirteen** fields — page, URL, user, browser, platform,
-language, timezone, viewport, screen, network, time, cores, device memory — and
-not the version. Why here: all five open issues are defect reports without a
-version, which is a request to guess, and the fix is one source of truth plus
-two readers. Note it rides naturally with item 2, which is already editing the
-root `package.json`.
+is not met. Measured at `d18d534`: the root `package.json` carries **no
+`version` field**; `frontend/package.json` reads `0.0.0` and
+`service/package.json` reads `0.1.0` (two hand-maintained copies — L-007); no
+version is visible to a user anywhere in the SPA; there is no `/version`
+endpoint; and `FeedbackDialog.vue::buildContext` (`:105`–`:122`) sends
+**thirteen** fields — page, URL, user, browser, platform, language, timezone,
+viewport, screen, network, time, cores, device memory — and not the version.
+Why here: all five open issues are defect reports without a version, which is a
+request to guess, and the fix is one source of truth plus two readers.
 
-**7 · A settings shell, with branding inside it** — source: issue
+**The cost of this entry went up at `d18d534`, and the note that it "rides
+naturally with item 2" is now wrong and is removed.** The root `package.json`
+was edited by that commit and its `version` field was **deliberately** left
+absent — `spec/0003` froze acceptance case **A-208**, which asserts the absence
+precisely so that "a later packet cannot take it in passing"
+(`spec/0003/SPEC.md:211`, `:251`). So the packet that takes this item must also
+retire or amend A-208 in the same commit, and should say so in its intent.
+That is a small, stated cost, not a blocker.
+
+**5 · A settings shell, with branding inside it** — source: issue
 [#5](https://github.com/pumasi-ai/pumasi-sign/issues/5) (`accepted`,
-`priority: normal`); pulled out of item 17 (spec §8), which keeps the rest.
+`priority: normal`); pulled out of item 15 (spec §8), which keeps the rest.
 There is no `settings` route and `/branding` is top-level
 (`router/index.ts:70`, `App.vue:50`). Ship the shell and move branding under
 it; the account defaults, notification preferences and retention controls that
-fill it stay in item 17. Why here: it is the container every later
+fill it stay in item 15. Why here: it is the container every later
 settings-shaped item needs, and shipping it early stops each of them inventing
 its own home.
 
-**8 · Focus-mode shells for prepare / tag / sign** — source: spec §1
+**6 · Focus-mode shells for prepare / tag / sign** — source: spec §1
 (shell 2). Full-screen wizard and signing surfaces: global chrome hidden,
 minimal header with close-X (back to origin), step title, primary actions
 top-right. Why here: the single largest *perceptual* gap to the incumbent —
 every send and every signature passes through these screens. **This is where
 the steward-directed parity mandate resumes.**
 
-**9 · One-page accordion envelope setup** — source: spec §4 step 1,
+**7 · One-page accordion envelope setup** — source: spec §4 step 1,
 checklist 8. Documents / recipients / message as three collapsible sections on
 one page; inline validation on attempted progression; implicit drafts on
-close. Replaces paged steps 1–2. Why here: with #8 it completes the incumbent's
+close. Replaces paged steps 1–2. Why here: with item 6 it completes the incumbent's
 prepare flow shape; touching the wizard once for both avoids rework.
 
-**10 · Tagging-canvas mechanics** — source: spec §4 step 2, checklist 1, 16.
+**8 · Tagging-canvas mechanics** — source: spec §4 step 2, checklist 1, 16.
 Drag-from-palette with cursor ghost (keep click-to-arm as fallback), zoom
 control, undo/redo, field copy/paste, grouped palette; multi-document
 envelopes as separate files with per-file thumbnail cards. **Scope is under
@@ -270,9 +214,9 @@ envelopes as separate files with per-file thumbnail cards. **Scope is under
 the UI *and in the certificate* — is the named default and may proceed
 pre-`launched`; Option B (true per-document separation, backend rework) is not
 authorized by that default. Why here: the canvas is "the product" per the
-spec's own ranking; do it after item 8 so it lands inside the focus shell.
+spec's own ranking; do it after item 6 so it lands inside the focus shell.
 
-**11 · Signature identity: styles, saved list, frame imprint** — source: spec
+**9 · Signature identity: styles, saved list, frame imprint** — source: spec
 §5 adopt modal, §8 signature adoption + framing, checklist 4. Generated styles
 from name/initials with live preview, multiple saved signature/initials pairs
 in a profile page, and the "signed by" bracket frame + short envelope/party ID
@@ -281,51 +225,53 @@ burned into the stamped PDF behind an account toggle (`service/src/core/stamping
 what makes a signed document *look* like the incumbent's output — the artifact
 everyone outside the org actually sees.
 
-**12 · Post-sign share loop** — source: spec §5 finish sequence, checklist 12.
+**10 · Post-sign share loop** — source: spec §5 finish sequence, checklist 12.
 After Finish: share-by-email modal (multi-email chips, prefilled subject, short
 message with counter), each recipient getting a tokenized free download link;
 declining still completes. Why here: cheap, and it is the incumbent's growth
 loop — the commons' S8 outward-transmission thesis for picking this product in
 the first place.
 
-**13 · Manager depth: bulk, folders, trash, richer filtering** — source: spec
+**11 · Manager depth: bulk, folders, trash, richer filtering** — source: spec
 §3, checklist 7, 21. Row checkboxes + bulk bar (download / move / delete), user
 folders, a real Deleted view with restore (soft-delete; archive stays per-user
 hide), quick-views dropdown, default date-window chip with inline clear,
 two-line rows (title over "To: recipients"), density toggle. Why here:
 daily-driver ergonomics once volume grows; none of it blocks the flows above.
 
-**14 · Ceremony options** — source: spec §5, §8 signing settings, checklist 5,
+**12 · Ceremony options** — source: spec §5, §8 signing settings, checklist 5,
 23. Finish-later; configurable consent/disclosure step for remote recipients
 (recorded in the certificate); auto-navigation modes (page-only / required /
 all). Why here: recipient-facing polish and the compliance-relevant consent
 record.
 
-**15 · Field-type parity + per-recipient auth** — source: spec §4 palette,
+**13 · Field-type parity + per-recipient auth** — source: spec §4 palette,
 checklist 17, 18. Email / Company / Title contact fields; Approve / Decline
 action buttons; Note; per-recipient "Customize" auth (access code; SMS later).
 Payment: explicitly skipped. Why here: each is small and spec-shaped; batch
 after the canvas rework so new types land once.
 
-**16 · Template library depth** — source: spec §7, checklist 9. Description
+**14 · Template library depth** — source: spec §7, checklist 9. Description
 field, favorites, my/shared-with-me groupings, "[Untitled]" implicit drafts,
 starter-template gallery. Why here: value scales with template count, which is
 still small.
 
-**17 · Admin & records layer** — source: spec §6, §8, checklist 3, 11, 13, 14,
+**15 · Admin & records layer** — source: spec §6, §8, checklist 3, 11, 13, 14,
 20, 25. Account defaults (reminders/expiration, signing permissions, date/time
 regional formats), per-user notification preferences, envelope/document custom
 metadata, retention purge, combined-into-one-PDF + zip download, certificate
 depth (per-signer viewed timestamps, security level, adoption method), a
-Reports section. **The settings *shell* was pulled out as item 7**; this is
+Reports section. **The settings *shell* was pulled out as item 5**; this is
 everything that goes inside it. Retention here is also what
 [`STAGE.md`](STAGE.md) §2.4 needs to make a data-survival claim citable. Why
 here: nothing user-visible upstream depends on it.
 
-**18 · Onboarding polish** — source: spec §2, §9, checklist 15. First-run coach
+**16 · Onboarding polish** — source: spec §2, §9, checklist 15. First-run coach
 marks per surface; persistent "n/5" getting-started checklist (banner + modal,
 live progress). Why last: worth doing only once the surfaces it teaches
-(items 7–11) are in their final shape.
+(items 5–9) are in their final shape.
+
+---
 
 ---
 
@@ -377,14 +323,123 @@ $ grep -oic 'landing' idx.js
 
 Zero occurrences of `landing`, `LandingView` or `Apache-2.0` in 839 941 bytes.
 This is a **stronger** measurement than a missing component chunk would be:
-`router/index.ts:16` registers the route eagerly as `name: "landing"` and
-lazy-loads only its component, so the route *name* would be in the main bundle
+the route is registered eagerly by name (`frontend/src/router/routes.ts:15`,
+`name: "landing"`, moved there from `router/index.ts` at `d18d534`) and only
+its component is lazy-loaded, so the route *name* would be in the main bundle
 even if the view were code-split — and `index.html` preloads no other chunk.
-The route is not in the deployment at all.
+
+**This evaluation extracted the deployed route table rather than counting a
+string, which settles it.** Every `path:` and `name:` literal in the bundle:
+the paths are `/`, `/admin/users`, `/branding`, `/envelopes/:id`, `/login`,
+`/privacy`, `/send/draft/:draftId`, `/send/:templateId?`, `/signed-out`,
+`/sign/:submitterId`, `/sign/t/:accessUid`, `/templates`,
+`/templates/:id/build`, `/terms` and the catch-all — and the route names
+include `dashboard` and **not** `landing`. In the deployment, `/` is the
+dashboard. One case-insensitive `beta` match exists in the bundle and it is
+inside the CSS counter-style name `tibetan`, in a vendored library; the chip
+is not there. **`LandingView.vue` has never reached a user**, which is not the
+same claim as "its correction is undeployed" — see [`STAGE.md`](STAGE.md) §5,
+where that row was wrong and is corrected in this pass.
+
+**B2 · Carry #7's merged fix to the people it is for** — source: issue
+[#7](https://github.com/pumasi-ai/pumasi-sign/issues/7) (`accepted`,
+`priority: high`), [`STAGE.md`](STAGE.md) §5, `pumasi/DECISIONS.md` **Q-027**.
+**New in this reorder.** The build is done and retired below; the user is not
+served. Measured by this evaluation on 2026-08-31 at 20:10–20:12 UTC:
+
+```
+$ curl -s https://sign.pumasi.ai/ | grep -o '/assets/index-[^"]*\.js'
+/assets/index-j38Qwibz.js
+$ curl -s -i 'https://sign.pumasi.ai/api/auth/login?next=%2F'
+HTTP/2 404
+{"error":"Endpoint not found"}
+```
+
+and, decisively, **the deployed bundle still contains the helper `d18d534`
+deleted.** Extracted from the shipped JavaScript by this evaluation — the
+minified `loginRedirectUrl`, sitting beside `loginPageUrl`:
+
+```js
+function pl(e){return`/api/auth/login?next=`+encodeURIComponent(e)}
+function ml(e){return`/login?next=`+encodeURIComponent(e)}
+```
+
+That is not an inference from a filename. It is the removed code, still
+shipping.
+
+**Blocked on two entries, not one, and the second one is the finding.**
+
+- **Q-012** — who carries a merged build to users — open, and explicitly
+  outside CHARTER Part 0's proceed-on-default rule.
+- **Q-021** — the licence — open, **and it binds this deploy too.**
+  `service/wrangler.jsonc:8` serves `../frontend/dist` as one `ASSETS`
+  directory, and `routes.ts:15` puts `LandingView` at `/`. `frontend/dist` is
+  `.gitignore`d and must be rebuilt for the fix to be in it (`CLAUDE.md`: *"a
+  stale `dist` ships a stale SPA"*). So **the only build that carries #7's
+  repair also publishes `LandingView.vue`'s "Apache-2.0 (Open Source)"**
+  (`:43`, `:80`, `:210`) on a repository that still has no `LICENSE`. The two
+  cannot be shipped apart without a `frontend/` change nobody has proposed —
+  which is Q-021's own named alternative, and is a decision, not a workaround.
+
+Q-021's `Blocks` row names only the deploy that closes #8, because when it was
+written #7's repair did not exist. It now holds a live user-facing defect fix
+as well. **That is recorded here and raised as `pumasi/DECISIONS.md` Q-028
+rather than routed around**; no seat here may weigh a licence question against
+a broken sign-in button.
 
 ---
 
 ## Retired
+
+**~~#7: "sign in again" sends the user to a raw 404~~ — delivered 2026-08-31
+at `d18d534`** (coder job `0037`, `spec/0003`, `pumasi/DECISIONS.md` **Q-027**,
+7-day window open). Was item 1. **Verified by this evaluation in the source
+tree, not taken from the job's report:**
+
+- `SignedOutView.vue:2` imports `loginPageUrl` and `:6` sets
+  `const signInUrl = loginPageUrl("/")`; `utils/http.ts:44` returns
+  `"/login?next=" + encodeURIComponent(next)`.
+- **`loginRedirectUrl` is gone.** `git grep loginRedirectUrl` over the tracked
+  tree returns no definition and no caller — only a header comment at
+  `utils/http.ts:39` explaining why it was removed, a frozen case at
+  `frontend/src/signed-out-entry.spec.ts:153` asserting the name appears
+  nowhere in the SFC, an old plan document, and a review file.
+- The page it now targets answers on the deployed tree:
+  `GET https://sign.pumasi.ai/login?next=%2F` → **200 `text/html`**, measured
+  by this evaluation.
+
+**Retired from the build order, and issue #7 stays open on purpose.** The
+*build* is done; the user is not served. `sign.pumasi.ai` still runs the
+pre-fix bundle — see [Blocked](#blocked--not-in-the-build-order-until-a-steward-answers)
+**B2**, which is new, and [`STAGE.md`](STAGE.md) §5, where this is now the
+worked example of *fixed in source and still wrong in production*.
+
+**~~Make `GATE: PASS` cover the tree users actually meet~~ — delivered
+2026-08-31 at `d18d534`** (coder job `0037`, `spec/0003`,
+`pumasi/DECISIONS.md` **Q-025** rider (a)). Was item 2. Verified by this
+evaluation by running it, not by reading it:
+
+- The root `package.json` `test` script is now
+  `npm run test:frontend && npm run test:service`; `test:service` is
+  `.github/scripts/run-service-suite.sh`, which `npm ci`s, **builds**
+  (`service/dist/` is `.gitignore`d and the suite runs `dist/`), runs the
+  suite, and hands its output to `.github/scripts/assert-service-suite-ran.sh`
+  — the **same file** `ci.yaml`'s `service` job calls, not a copy (L-007).
+- Run at `d18d534` by this evaluation: `Test Files 6 passed (6)`,
+  `Tests 85 passed (85)`, `# pass 2`, `# fail 0`,
+  `assert-service-suite-ran: 2 passing, 0 failing, from 2 compiled`. Before
+  `d18d534` the same command reported 5 files / 69 tests and **zero** service
+  assertions.
+- Determinism re-measured for the suite that exists **today**, because the
+  shape changed: **40 consecutive runs, 40 pass, 0 fail**, every run reporting
+  the identical counts above. Details and method in [`STAGE.md`](STAGE.md) §0
+  rider (b).
+
+**What is carried forward, and it is item 1.** The gate now runs the served
+tree; what it runs there is two assertions against one file. `main` is still
+**not a protected branch** — `GET /repos/pumasi-ai/pumasi-sign/branches/main/protection`
+→ 404 *"Branch not protected"*, re-checked this tick — so this one hand-run
+command remains the whole gate. Q-025 is untouched and stays open.
 
 **~~Green main: fix the 4 backend pytest failures~~ — met 2026-08-31.** Was
 item 1. CI run
@@ -395,7 +450,10 @@ failures were single-tenant expectations against multi-tenant normalization,
 deleted, with one thing carried forward: **that gate covers `backend/`, which
 is not what users reach.** The re-sourced version of this entry's purpose —
 *a gate whose green means something* — became the old item 2, retired directly
-below, whose own successor is item 2 of the current order.
+below. That entry's own successor — the *merge* gate, as against CI — was in
+turn delivered at `d18d534` and is retired below it. What is left of the
+lineage is item 1: a gate that runs the served tree, over a suite two
+assertions wide.
 
 **~~Make the gate cover the tree users actually meet~~ — delivered 2026-08-31
 at `ef851d6`** (coder job `0032`, `pumasi/DECISIONS.md` Q-018 parts (a), (b),
@@ -425,8 +483,9 @@ from the job's report:
 **Retired, not deleted, and what is carried forward:** Q-018 itself stays open
 — nothing was deleted, the domain was not re-pointed, no data moved, and
 *which tree is the product* is untouched. Two successors are in the order
-above: the gate half this never covered is **item 2**, and the thinness of
-what the new job runs is **item 4**.
+above: the gate half this never covered was **the old item 2**, delivered at
+`d18d534` and retired directly below; and the thinness of what the new job
+runs is now **item 1**, the top of this file.
 
 **~~Item 1(a): the `BETA` chip, and 1(c): the uncited competitor pricing~~ —
 merged 2026-08-31 at `a49f594`** (coder job `0026`, under `spec/0001`).
