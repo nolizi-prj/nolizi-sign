@@ -13,6 +13,12 @@ import { useAuthStore } from "../store/auth";
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
+    name: "landing",
+    component: () => import("../views/LandingView.vue"),
+    meta: { public: true },
+  },
+  {
+    path: "/dashboard",
     name: "dashboard",
     component: () => import("../views/DashboardView.vue"),
   },

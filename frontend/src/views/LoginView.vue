@@ -14,7 +14,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const ui = useUiStore();
 
-const activeTab = ref<"signin" | "signup">("signin");
+const activeTab = ref<"signin" | "signup">(route.query.tab === "signup" ? "signup" : "signin");
 const email = ref("");
 const name = ref("");
 const code = ref("");
@@ -25,7 +25,7 @@ const error = ref("");
 
 const next = computed(() => {
   const raw = route.query.next;
-  return typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+  return typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//") && raw !== "/" ? raw : "/dashboard";
 });
 
 const googleSsoUrl = computed(() => `/api/auth/oauth/google?next=${encodeURIComponent(next.value)}`);
