@@ -100,6 +100,15 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array | null => {
 /** Internal submitter status → the frontend's SubmitterStatus. */
 const outSubmitterStatus = (s: string): string => (s === 'signed' ? 'completed' : s);
 
+/**
+ * The three statuses an envelope never leaves: it has been executed, refused
+ * or voided, and every later write is destroying a record rather than making
+ * one. `draft` and `pending` are the only statuses a transition may move.
+ * spec/0006 §S2.
+ */
+const isTerminal = (status: unknown): boolean =>
+  status === 'completed' || status === 'declined' || status === 'cancelled';
+
 interface UserRow {
   id: string;
   email: string;
@@ -1237,6 +1246,10 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (method === 'POST' && action === 'cancel') {
+        // A finished envelope is not voidable: the row would come to say
+        // `cancelled` about an agreement whose certificate says `completed`.
+        // spec/0006 §S2a; refusal is this route's neighbours' idiom (:1231).
+        if (isTerminal(sub.status)) return json({ error: 'This envelope is already closed' }, 409);
         const body: any = await req.json().catch(() => ({}));
         this.sql.exec(`UPDATE submissions SET status = 'cancelled', updated_at = ? WHERE id = ?`, now, sub.id);
         this.audit(sub.id, 'cancelled', user.email, user.name, undefined, body.reason ? { reason: String(body.reason) } : undefined);
@@ -1431,7 +1444,12 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (signMatch[2] === 'complete' && method === 'POST') {
-        if (submission.status === 'cancelled' || submission.status === 'declined') {
+        // `completed` belongs here too: without it a CC recipient -- who never
+        // held the envelope open (:1479's `AND is_cc = 0`) -- signs afterwards,
+        // runs finalize() a second time and writes a second `completed` audit
+        // event, re-stamping the executed PDF where one is present.
+        // spec/0006 §S2b.
+        if (isTerminal(submission.status)) {
           return json({ error: 'This envelope is no longer active' }, 410);
         }
         if (me.status === 'signed') return json({ error: 'Already signed' }, 409);
@@ -1488,6 +1506,14 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (signMatch[2] === 'decline' && method === 'POST') {
+        // The three guards `complete` carries five lines up. Without them the
+        // same envelope refuses a signature and accepts a decline in the same
+        // breath. 409 rather than complete's 410 is spec/0006 §S2c's stated
+        // asymmetry, not an oversight.
+        if (isTerminal(submission.status)) return json({ error: 'This envelope is no longer active' }, 409);
+        if (me.status === 'signed') return json({ error: 'Already signed' }, 409);
+        if (!this.submitterTurn(me)) return json({ error: 'Earlier signers have not finished yet' }, 409);
+
         const body: any = await req.json().catch(() => ({}));
         const now = new Date().toISOString();
         this.sql.exec(`UPDATE submitters SET status = 'declined', signed_at = ? WHERE id = ?`, now, me.id);

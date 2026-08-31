@@ -1,5 +1,6 @@
 /**
- * Frozen acceptance cases A-400 – A-409 · spec/0005.
+ * Frozen acceptance cases A-400 – A-409 · spec/0005, three of them amended by
+ * spec/0006 §S4.
  *
  * Sub-item 3 of roadmap/BACKLOG.md item 1: WHAT AN ENVELOPE MAY BECOME. These
  * drive the Durable Object that answers sign.pumasi.ai through its own
@@ -7,13 +8,18 @@
  * transition durable.ts actually implements, and across one the product claims
  * and durable.ts does not.
  *
- * THEY CHARACTERIZE. THEY DO NOT ADJUDICATE. Three of the transitions below
- * are unguarded, and recording that is the whole job: a test written to assert
- * that a guard SHOULD be there would be taking a product decision inside a
- * test packet. Each such assertion is marked RECORDED, NOT ENDORSED at the
- * assertion itself and names the spec/0005 §S6 entry it belongs to, so that
- * red there means "someone took the backlog entry" rather than "someone broke
+ * THEY CHARACTERIZE. THEY DO NOT ADJUDICATE. When frozen, four assertions here
+ * were marked RECORDED, NOT ENDORSED against a spec/0005 §S6 entry, so that red
+ * there would mean "someone took the backlog entry" rather than "someone broke
  * the worker". That idiom is spec/0004 §S4's and this file inherits it.
+ *
+ * AMENDED 2026-08-31 (spec/0006 §S4), in the open, in the same commit as the
+ * repair it records. THREE of those four went red on purpose and are now
+ * asserted against the guard instead of against its absence: A-404 (cancel),
+ * A-406 (a completed envelope accepting a further signature) and A-407
+ * (decline). Each carries, at its own header, what it asserted before and what
+ * it asserts now. A-409 is UNTOUCHED and still RECORDED, NOT ENDORSED --
+ * `expired` is roadmap/BACKLOG.md item 2 and was not this packet's to take.
  *
  * Read spec/0005/SPEC.md §S1 before trusting a green run: this is SQLite, but
  * it is not workerd's SQLite (spec/0004 §S1c), and these are assertions about
@@ -251,21 +257,35 @@ test('A-403 a completed, cancelled or declined envelope cannot be sent or remind
   }
 });
 
-// ── A-404 · cancel guards on nothing (:1239–:1243) ──────────────────────────
+// ── A-404 · cancel refuses every terminal status (:1252) ────────────────────
+//
+// AMENDED 2026-08-31 by spec/0006 §S4, in the open and in the same commit as
+// the repair. Frozen 2026-08-31 by spec/0005 as *"cancel has no status guard:
+// it overwrites a completed, declined or already-cancelled envelope and audits
+// again"*, asserting `again.status === 200`, `statusOf === 'cancelled'` for
+// each of the three terminal statuses, and two `cancelled` events on one
+// envelope. That was RECORDED, NOT ENDORSED against spec/0005 §S6.1, and going
+// red was the documented sign that the backlog entry had been taken. It was.
+// The case still covers the same transition; it now asserts the guard.
 
-test('A-404 cancel has no status guard: it overwrites a completed, declined or already-cancelled envelope and audits again', async () => {
+test('A-404 cancel moves a pending envelope to cancelled once, and refuses a completed, declined or already-cancelled one without writing', async () => {
   const h = newHarness();
   const cookie = await signIn(h, 'owner@pumasi.ai');
   const cancel = (id: string) => h.fetch(`/api/submissions/${id}/cancel`, { method: 'POST', cookie });
 
-  // The ordinary transition, which is guarded by nothing but happens to be
-  // the only one anybody intends.
+  // The ordinary transition, unchanged by the repair.
   const pending = seedEnvelope(h, { owner: 'owner@pumasi.ai', status: 'pending' });
   const res = await cancel(pending.id);
   assert.equal(res.status, 200);
   assert.deepEqual(await body(res), { ok: true });
   assert.equal(statusOf(h, pending.id), 'cancelled');
   assert.deepEqual(events(h, pending.id), ['cancelled']);
+
+  // A draft is cancellable too: `draft` and `pending` are the two statuses the
+  // guard lets through, and the shipped Void button is drawn for both.
+  const draft = seedEnvelope(h, { owner: 'owner@pumasi.ai', status: 'draft' });
+  assert.equal((await cancel(draft.id)).status, 200);
+  assert.equal(statusOf(h, draft.id), 'cancelled');
 
   // A reason rides into details_json when one is given.
   const withReason = seedEnvelope(h, { owner: 'owner@pumasi.ai', status: 'pending' });
@@ -277,27 +297,26 @@ test('A-404 cancel has no status guard: it overwrites a completed, declined or a
     '{"reason":"Wrong counterparty"}',
   );
 
-  // RECORDED, NOT ENDORSED -- spec/0005 §S6.1, proposed as a roadmap/BACKLOG.md
-  // entry and NOT repaired here. Every other transition in this file checks the
-  // current status first: DELETE at durable.ts:1210, send at :1227-:1233,
-  // resend at :1295, complete at :1434. `cancel` at :1239-:1243 checks nothing,
-  // so a TERMINAL status is silently destroyed and a second audit event is
-  // written over the first. If these three assertions go red, someone added the
-  // guard -- that is a decision taken, not a regression.
+  // THE REPAIR (durable.ts:1252, spec/0006 §S2a). Where this case previously
+  // recorded a 200 and an overwritten terminal status, the three terminal
+  // statuses are now refused with 409 -- and the refusal WRITES NOTHING and
+  // AUDITS NOTHING, proved by reading the row back and by the audit trail
+  // still being empty rather than by inspecting the handler.
   for (const status of ['completed', 'declined', 'cancelled']) {
     const env = seedEnvelope(h, { owner: 'owner@pumasi.ai', status });
     const again = await cancel(env.id);
-    assert.equal(again.status, 200, `cancel on ${status} is accepted today`);
-    assert.equal(statusOf(h, env.id), 'cancelled', `${status} was overwritten by cancel`);
-    assert.deepEqual(events(h, env.id), ['cancelled']);
+    assert.equal(again.status, 409, `cancel on ${status} is refused`);
+    assert.deepEqual(await body(again), { error: 'This envelope is already closed' });
+    assert.equal(statusOf(h, env.id), status, `${status} survived the refused cancel`);
+    assert.deepEqual(events(h, env.id), [], `cancel on ${status} left an audit event`);
   }
 
-  // ... and cancelling an already-cancelled envelope twice leaves two events
-  // on one envelope, which is the same defect seen from the audit trail.
+  // ... and cancelling twice now leaves ONE event on one envelope, which is
+  // the same repair seen from the audit trail: this asserted two before.
   const twice = seedEnvelope(h, { owner: 'owner@pumasi.ai', status: 'pending' });
-  await cancel(twice.id);
-  await cancel(twice.id);
-  assert.deepEqual(events(h, twice.id), ['cancelled', 'cancelled']);
+  assert.equal((await cancel(twice.id)).status, 200);
+  assert.equal((await cancel(twice.id)).status, 409);
+  assert.deepEqual(events(h, twice.id), ['cancelled']);
 });
 
 // ── A-405 · resend refuses a signer who is not pending (:1295) ──────────────
@@ -340,9 +359,9 @@ test('A-405 resending an invitation is scoped to this envelope and refused for a
   assert.deepEqual(await body(crossed), { error: 'No such signer' });
 });
 
-// ── A-406 · the last outstanding signer completes the envelope (:1479) ──────
+// ── A-406 · the last outstanding signer completes it, once (:1479, :1452) ──
 
-test('A-406 signing is in order, is once, and the last outstanding non-CC signer moves the envelope to completed', async () => {
+test('A-406 signing is in order, is once, and the last outstanding non-CC signer completes the envelope -- after which a CC recipient is refused and it completes exactly once', async () => {
   const h = newHarness();
   const env = seedEnvelope(h, {
     owner: 'owner@pumasi.ai',
@@ -395,25 +414,48 @@ test('A-406 signing is in order, is once, and the last outstanding non-CC signer
   ).get(env.id) as { e: string };
   assert.equal(done.e, 'system@pumasi.ai');
 
-  // RECORDED, NOT ENDORSED -- spec/0005 §S6.4, proposed and NOT repaired here.
-  // complete's dead-envelope guard (durable.ts:1434) tests `cancelled` and
-  // `declined` and NOT `completed`, so the CC recipient -- who never held the
-  // envelope open -- can still sign it afterwards. That runs finalize() a
-  // second time on an already-completed envelope and writes a SECOND
-  // `completed` audit event. Red here means someone added `completed` to that
-  // guard: a decision taken, not a regression.
-  const after = await sign(cc, await signerCookie(h, cc));
-  assert.equal(after.status, 200, 'a completed envelope still accepts a signature today');
-  assert.deepEqual(await body(after), { ok: true, status: 'completed' });
+  // THE REPAIR (durable.ts:1452, spec/0006 §S2b). AMENDED 2026-08-31 by
+  // spec/0006 §S4. This tail was frozen as RECORDED, NOT ENDORSED against
+  // spec/0005 §S6.4 and asserted the opposite of what it asserts now: that the
+  // CC recipient's signature was ACCEPTED (200, `{ ok: true, status:
+  // 'completed' }`) and that the envelope carried TWO `completed` events
+  // because finalize() had run a second time. `completed` is now in complete's
+  // dead-envelope guard, so the CC recipient is refused with the same 410 the
+  // other two terminal statuses already gave.
+  //
+  // The cookie is taken and the trail snapshotted BEFORE the attempt, because
+  // verifying a signer audits `signer_verified` and that write is not the one
+  // under test. What follows proves the refusal wrote nothing at all.
+  const ccCookie = await signerCookie(h, cc);
+  const trailBefore = events(h, env.id);
+  const after = await sign(cc, ccCookie);
+  assert.equal(after.status, 410, 'a completed envelope no longer accepts a signature');
+  assert.deepEqual(await body(after), { error: 'This envelope is no longer active' });
+  assert.equal(statusOf(h, env.id), 'completed', 'the completed envelope was left alone');
+  assert.equal(signerStatus(h, cc.id), 'pending', 'the CC recipient was not marked signed');
+  assert.deepEqual(events(h, env.id), trailBefore, 'the refused signature wrote an audit event');
   assert.equal(
-    events(h, env.id).filter((e) => e === 'completed').length, 2,
-    'finalize ran twice and the envelope has two completion events',
+    events(h, env.id).filter((e) => e === 'completed').length, 1,
+    'finalize ran once and the envelope has exactly one completion event',
   );
+  const stamp = h.db.prepare(`SELECT completed_at FROM submissions WHERE id = ?`).get(env.id) as { completed_at: string };
+  assert.equal(stamp.completed_at, row.completed_at, 'completed_at was re-stamped by a second finalize');
 });
 
-// ── A-407 · decline (:1490–:1495), which guards on nothing either ───────────
+// ── A-407 · decline, which now carries complete's three guards (:1513) ──────
+//
+// AMENDED 2026-08-31 by spec/0006 §S4, in the open and in the same commit as
+// the repair. Frozen 2026-08-31 by spec/0005 as *"one decline ends the
+// envelope for everyone, and decline has no status guard where complete has
+// one"*, asserting RECORDED, NOT ENDORSED against spec/0005 §S6.2 that a
+// decline on an already-declined envelope was accepted (200), that a completed
+// envelope was overwritten to `declined`, and that a signer whose status was
+// `signed` was flipped to `declined`. Red there was the documented sign that
+// the backlog entry had been taken. It was. The first half of the case -- one
+// decline ending the envelope for everyone -- is unchanged; the asymmetry the
+// second half existed to prove is now closed, and the case asserts the close.
 
-test('A-407 one decline ends the envelope for everyone, and decline has no status guard where complete has one', async () => {
+test('A-407 one decline ends the envelope for everyone, and decline now carries the same three guards complete has', async () => {
   const h = newHarness();
   const env = seedEnvelope(h, {
     owner: 'owner@pumasi.ai',
@@ -437,34 +479,68 @@ test('A-407 one decline ends the envelope for everyone, and decline has no statu
     '{"reason":"Terms are wrong"}',
   );
 
-  // complete DOES guard: the same dead envelope refuses a signature.
+  // complete guards, as it always did: the same dead envelope refuses a signature.
+  const secondCookie = await signerCookie(h, second);
   const stopped = await h.fetch(`/api/sign/${second.id}/complete`, {
-    method: 'POST', cookie: await signerCookie(h, second), body: JSON.stringify({ values: {} }),
+    method: 'POST', cookie: secondCookie, body: JSON.stringify({ values: {} }),
   });
   assert.equal(stopped.status, 410);
   assert.deepEqual(await body(stopped), { error: 'This envelope is no longer active' });
 
-  // RECORDED, NOT ENDORSED -- spec/0005 §S6.2, proposed and NOT repaired here.
-  // decline at durable.ts:1490 carries none of complete's three checks
-  // (:1434 dead envelope, :1437 already signed, :1438 turn), so it is the
-  // second unguarded transition in this file and the asymmetry above is the
-  // proof: the SAME envelope, in the SAME breath, refuses a signature and
-  // accepts a decline. Red here means someone added the guard.
-  const stillDeclines = await decline(second, await signerCookie(h, second));
-  assert.equal(stillDeclines.status, 200, 'decline is accepted on a declined envelope today');
-  assert.equal(signerStatus(h, second.id), 'declined');
+  // THE REPAIR, guard 1 of 3 -- terminal status (durable.ts:1513, spec/0006
+  // §S2c). This asserted 200 and a second flipped signer before. The same
+  // envelope that refuses a signature above now refuses the decline as well;
+  // the asymmetry this case was frozen to prove is gone. The code differs from
+  // complete's 410 by design -- spec/0006 §S2c and INTENT question 3 -- and
+  // both mean refused.
+  const trailBefore = events(h, env.id);
+  const stillDeclines = await decline(second, secondCookie);
+  assert.equal(stillDeclines.status, 409, 'decline is refused on a declined envelope');
+  assert.deepEqual(await body(stillDeclines), { error: 'This envelope is no longer active' });
+  assert.equal(signerStatus(h, second.id), 'pending', 'the refused decline did not touch the signer');
+  assert.equal(statusOf(h, env.id), 'declined');
+  assert.deepEqual(events(h, env.id), trailBefore, 'the refused decline left an audit event');
 
-  // ... including on a completed envelope, whose terminal status is destroyed.
+  // ... including on a completed envelope, whose terminal status now survives.
   const done = seedEnvelope(h, { owner: 'owner@pumasi.ai', status: 'completed', signers: [{ email: 'x@example.test' }] });
-  await decline(done.signers[0], await signerCookie(h, done.signers[0]));
-  assert.equal(statusOf(h, done.id), 'declined', 'a completed envelope was overwritten by a decline');
+  const doneCookie = await signerCookie(h, done.signers[0]);
+  const doneTrail = events(h, done.id);
+  const onDone = await decline(done.signers[0], doneCookie);
+  assert.equal(onDone.status, 409);
+  assert.deepEqual(await body(onDone), { error: 'This envelope is no longer active' });
+  assert.equal(statusOf(h, done.id), 'completed', 'a completed envelope was overwritten by a decline');
+  assert.equal(signerStatus(h, done.signers[0].id), 'pending');
+  assert.deepEqual(events(h, done.id), doneTrail, 'the refused decline audited a declined event');
 
-  // ... and on a signer who has already signed, whose `signed` is destroyed.
+  // THE REPAIR, guard 2 of 3 -- already signed. A signer whose `signed` was
+  // destroyed here before is now refused with complete's own words.
   const signed = seedEnvelope(h, {
     owner: 'owner@pumasi.ai', status: 'pending', signers: [{ email: 'y@example.test', status: 'signed' }],
   });
-  await decline(signed.signers[0], await signerCookie(h, signed.signers[0]));
-  assert.equal(signerStatus(h, signed.signers[0].id), 'declined', 'a signed signer was flipped to declined');
+  const signedCookie = await signerCookie(h, signed.signers[0]);
+  const signedTrail = events(h, signed.id);
+  const onSigned = await decline(signed.signers[0], signedCookie);
+  assert.equal(onSigned.status, 409);
+  assert.deepEqual(await body(onSigned), { error: 'Already signed' });
+  assert.equal(signerStatus(h, signed.signers[0].id), 'signed', 'a signed signer was flipped to declined');
+  assert.equal(statusOf(h, signed.id), 'pending');
+  assert.deepEqual(events(h, signed.id), signedTrail, 'the refused decline left an audit event');
+
+  // THE REPAIR, guard 3 of 3 -- signing order. Declining out of turn is
+  // refused for the same reason signing out of turn is (A-406).
+  const queue = seedEnvelope(h, {
+    owner: 'owner@pumasi.ai',
+    status: 'pending',
+    signers: [{ email: 'a@example.test', order: 1 }, { email: 'b@example.test', order: 2 }],
+  });
+  const lateCookie = await signerCookie(h, queue.signers[1]);
+  const queueTrail = events(h, queue.id);
+  const early = await decline(queue.signers[1], lateCookie);
+  assert.equal(early.status, 409);
+  assert.deepEqual(await body(early), { error: 'Earlier signers have not finished yet' });
+  assert.equal(signerStatus(h, queue.signers[1].id), 'pending');
+  assert.equal(statusOf(h, queue.id), 'pending');
+  assert.deepEqual(events(h, queue.id), queueTrail, 'the refused decline left an audit event');
 });
 
 // ── A-408 · the wire word and the column word (:101, :1320, :1411) ──────────
