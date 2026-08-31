@@ -27,7 +27,10 @@ test("admin sends a one-off envelope to a signer added by typing a new email", a
     await admin.getByRole("link", { name: "New envelope" }).click();
     await expect(admin).toHaveURL(/\/send/);
 
-    await admin.locator('input[type="file"]').setInputFiles(FIXTURE_PDF);
+    // Scoped to the ad-hoc upload: the dashboard's hidden hero-dropzone input
+    // is a single-file input and can still be in the DOM as /send mounts, so an
+    // unscoped input[type="file"] binds whichever won the race.
+    await admin.locator('.adhoc-file-input input[type="file"]').setInputFiles(FIXTURE_PDF);
     await admin.getByLabel("Title").fill(`E2E Compose ${stamp}`);
     await admin.getByRole("button", { name: "Continue", exact: true }).click();
   });
@@ -93,7 +96,7 @@ test("admin sends a one-off envelope built from multiple files merged in order",
     await admin.goto("/");
     await admin.getByRole("link", { name: "New envelope" }).click();
 
-    await admin.locator('input[type="file"]').setInputFiles([
+    await admin.locator('.adhoc-file-input input[type="file"]').setInputFiles([
       { name: `contract-a-${stamp}.pdf`, mimeType: "application/pdf", buffer: pdfBuffer },
       { name: `appendix-b-${stamp}.pdf`, mimeType: "application/pdf", buffer: pdfBuffer },
     ]);

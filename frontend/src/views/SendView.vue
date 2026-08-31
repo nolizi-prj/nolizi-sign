@@ -982,6 +982,7 @@ async function send(asDraft = false): Promise<void> {
                 </p>
                 <v-file-input
                   :model-value="adhocSourceFiles"
+                  class="adhoc-file-input"
                   label="Documents (PDF, Office files, images, and more)"
                   :accept="UPLOAD_ACCEPT"
                   prepend-icon="mdi-file-document-multiple-outline"

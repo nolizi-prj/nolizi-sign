@@ -125,7 +125,7 @@ test("admin builds a template, sends it, both signers sign, and the completed PD
     await admin.goto("/templates");
     await admin.getByRole("button", { name: "New template" }).click();
     await admin.getByLabel("Name").fill(submissionTitle);
-    await admin.locator('input[type="file"]').setInputFiles(FIXTURE_PDF);
+    await admin.getByRole("dialog").locator('input[type="file"]').setInputFiles(FIXTURE_PDF);
     // Scoped to the dialog: the dashboard's empty-state CTA ("Create your
     // first template") would otherwise also match the substring "Create".
     await admin.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();

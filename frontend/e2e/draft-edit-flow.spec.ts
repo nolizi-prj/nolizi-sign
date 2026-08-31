@@ -63,7 +63,7 @@ test("draft can be edited in the wizard and then sent", async ({ browser }) => {
     await admin.getByRole("link", { name: "New envelope" }).click();
     await expect(admin).toHaveURL(/\/send$/);
 
-    await admin.locator('input[type="file"]').setInputFiles(FIXTURE_PDF);
+    await admin.locator('.adhoc-file-input input[type="file"]').setInputFiles(FIXTURE_PDF);
     await admin.getByLabel("Title").fill(draftTitle);
     await admin.getByRole("button", { name: "Continue", exact: true }).click();
 

@@ -123,10 +123,23 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+
+  // The landing page is public, but it is a marketing page for people who do
+  // not have an account yet. A signed-in visitor who opens the app root wants
+  // the product, so resolve the session even though the route is public and
+  // hand them to their dashboard. (In-app navigation never comes here — the
+  // app bar's brand link targets `dashboard` directly.)
+  if (to.name === "landing") {
+    if (!auth.fetched) {
+      await auth.fetchMe();
+    }
+    return auth.me ? { name: "dashboard" } : true;
+  }
+
   if (to.meta.public) {
     return true;
   }
-  const auth = useAuthStore();
   if (!auth.fetched) {
     await auth.fetchMe();
   }
