@@ -1,9 +1,13 @@
 /**
  * Shared axios instance for all API calls.
  *
- * baseURL is "/api" — in dev this is proxied to the backend (see
- * vite.config.ts), in prod it's served by the same FastAPI app that serves
- * the built SPA (see backend/app/main.py's SPA fallback).
+ * baseURL is "/api" — in dev this is proxied (see vite.config.ts). In
+ * production `/api/*` is answered by the Cloudflare Worker in service/, which
+ * also serves this SPA through its ASSETS binding; `wrangler.jsonc`'s
+ * `run_worker_first: ["/api/*"]` is what routes those paths past the assets
+ * layer. backend/ is a second implementation of the same API and is not what
+ * users reach (pumasi/DECISIONS.md Q-018) — so a URL here must name a route
+ * the WORKER has. Getting that wrong is what issue #7 was.
  *
  * On a 401 response, we normally hard-redirect to the SPA's own `/login`
  * page, which offers both Entra SSO and email magic-link sign-in. The one
@@ -27,11 +31,16 @@ export const http = axios.create({
   baseURL: "/api",
 });
 
-export function loginRedirectUrl(next: string): string {
-  return "/api/auth/login?next=" + encodeURIComponent(next);
-}
-
-/** SPA login page (SSO button + email link form), preserving the target path. */
+/**
+ * The one way to send a browser to sign in: the SPA's own `/login` page,
+ * preserving the target path. It offers both SSO buttons and the emailed
+ * code, and every call it makes is a worker route.
+ *
+ * There used to be a second one beside it, `loginRedirectUrl`, returning a
+ * server path that only backend/ answers. The worker replied to it with
+ * `{"error":"Endpoint not found"}`, which a signed-out user met as a page
+ * (issue #7, spec/0003). One helper, so there is nothing to pick wrongly.
+ */
 export function loginPageUrl(next: string): string {
   return "/login?next=" + encodeURIComponent(next);
 }

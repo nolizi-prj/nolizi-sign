@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { loginRedirectUrl } from "../utils/http";
+import { loginPageUrl } from "../utils/http";
 
-const signInUrl = loginRedirectUrl("/");
+// The SPA login page, not a server route: `/api/auth/login` exists only in
+// backend/, and the worker that serves sign.pumasi.ai answers it 404 (#7).
+const signInUrl = loginPageUrl("/");
 // Ends the browser's Microsoft SSO session too; without this, "Sign in
 // again" completes silently for the same account.
 const microsoftLogoutUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/logout";
