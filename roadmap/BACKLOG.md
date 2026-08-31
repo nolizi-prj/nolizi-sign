@@ -63,6 +63,16 @@ is `@router.get("/login")` under prefix `/api/auth` — and the worker defines
 `POST /api/auth/login/request` (`:775`) and `POST /api/auth/login/verify`
 (`:798`). The SPA calls a route that exists only in the tree nobody reaches.
 
+**Every CI job was green on this bug, and one of them was green *because* of
+it.** Run 33420378497 at `ef851d6` is `backend` ✓, `frontend` ✓, `service` ✓,
+`e2e` ✓ — while the button 404s in production. The `e2e` job is the reason to
+care: `frontend/playwright.config.ts` boots `uvicorn`, or in CI a Docker image
+built from the root `Dockerfile`, and both are **`backend/`** — the one tree in
+which `GET /api/auth/login` exists. So the six Playwright specs exercise a
+sign-in path that works, on a server no user reaches, and would keep passing
+however long this defect stayed live. That is L-006 and L-009 in one artefact,
+and it is item 4's strongest argument.
+
 Why here: it is the only `priority: high` defect that is **live, on the entry
 path, and buildable today** — the other one, #8, is Blocked. A signed-out user
 who cannot get back in is the plainest counterexample to the next stage's
@@ -112,6 +122,26 @@ Retired) and Q-018(b) both said
 *"CI gains a job"* in those words, and the root `package.json` was authored one
 commit earlier under `spec/0001`'s scope.
 
+**An objection to this entry sitting at 2 rather than 1, recorded because it is
+a good one.** A cross-family review of this ranking (gemini, the one family
+answering — see [`STAGE.md`](STAGE.md) §0) argued for swapping: that calling CI
+a "backstop" over-claims when branch protection is absent, and that item 1 is
+*caused* by this gap, so fixing #7 first means pushing a hotfix through the
+pipeline that produced it. **The first half lands and the wording above was
+written to concede it.** The second half does not survive checking, and
+checking it found something worse: this entry's fix is the root `test` script
+running `service`'s suite, and that suite could be *complete* and still not
+catch item 1, which is a frontend `href` pointing at a route the worker lacks.
+The suite that should have caught it — `e2e` — passes, because it drives
+`backend/`. Nothing in the current four jobs could go red on item 1. So the two
+entries are not cause and effect; they are two different holes, and the one
+with a user standing in it goes first. The tiebreak that settles it: if a
+packet takes only the top item and stops, ordering this first leaves a user
+unable to sign in for another cycle, while ordering #7 first leaves one merge
+cycle whose gate evidence is weaker than it should be — on a branch where CI
+still *reports*, even though it does not block. The first is worse.
+**Both entries say it in their own text: take them in one packet.**
+
 **3 · #6: the colour buttons touch — on three views, not one** — source: issue
 [#6](https://github.com/pumasi-ai/pumasi-sign/issues/6) (`accepted`,
 `priority: normal`). Re-measured at `ef851d6` and **wider than this entry
@@ -155,6 +185,15 @@ than "two tests":
   API surface, and the `establishSession` domain gate Q-018 flags as diverging
   from `backend/`), `worker.ts`, `storage/r2.ts`, `mail.ts`, `feedback.ts`,
   `convert/graph.ts`.
+- **And the suite that would cover a route points at the wrong tree.**
+  `frontend/playwright.config.ts` boots `uvicorn` locally, or in CI a Docker
+  image built from the root `Dockerfile` — `backend/`, both times. The six e2e
+  specs therefore assert that a *FastAPI* server signs users in. Item 1 is the
+  proof that this is not a theoretical complaint: those specs are green on a
+  live production 404. **This is a third thing, distinct from the two above** —
+  the unit suite is thin, the merge gate does not run it, and the integration
+  suite drives the wrong server — and a packet on this item should say which of
+  the three it is taking.
 
 Why here: now that the `service` CI job exists, *"the tests pass"* finally says
 something about production — and what it says is "the PDF stamper works". This

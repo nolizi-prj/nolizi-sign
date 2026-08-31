@@ -230,13 +230,23 @@ than counted. They have identical import lists — `node:test`,
   flags), `worker.ts`, `storage/r2.ts`, `mail.ts`, `feedback.ts`,
   `convert/graph.ts`.
 
-The two suites, recounted at `ef851d6`:
+**(iii) The one suite that exercises routes drives the wrong server.**
+`frontend/playwright.config.ts` boots `uvicorn` locally, or in CI a Docker
+image built from the root `Dockerfile` — **`backend/`**, both times. So the six
+e2e specs assert that a FastAPI server signs users in. §2.2 is the proof that
+this is not theoretical: **CI run 33420378497 is green on all four jobs at
+`ef851d6` while the deployed sign-in button returns a 404**, and `e2e` is green
+precisely *because* it drives the tree where that route exists. Nothing in the
+current four jobs could go red on that defect. This is L-006 and L-009 in a
+single artefact, and it is the sharpest thing on this page.
+
+The three suites and the gate, recounted at `ef851d6`:
 
 | Tree | Tests | Run by CI | Run by the merge gate |
 | :--- | ---: | :--- | :--- |
 | `backend/` | 541 test functions (545 collected in CI) | yes | no |
 | `frontend/` unit | 69 in 5 files | yes | **yes** |
-| `frontend/` e2e | 6 Playwright specs in 4 files | yes | no |
+| `frontend/` e2e — **drives `backend/`** | 6 Playwright specs in 4 files | yes | no |
 | **`service/` — the deployment** | **2, both on `core/stamping.ts`** | **yes, since `ef851d6`** | **no** |
 
 This remains [L-006](https://github.com/pumasi-ai/governance/blob/main/lessons/L-006-tests-that-cannot-fail.md)
@@ -270,7 +280,9 @@ about production is read off the `backend` or `e2e` jobs, and none is.
   `POST /api/auth/login/request` (`:775`) and `POST /api/auth/login/verify`
   (`:798`). So a signed-out user pressing the button is shown the worker's
   error JSON, raw. This is **L-009 in this product for the third time**, and it
-  is the first one with a user on the other end of it. `BACKLOG.md` item 1.
+  is the first one with a user on the other end of it. **And every CI job was
+  green on it** — run 33420378497, all four ✓ at `ef851d6` — because the suite
+  that exercises sign-in drives `backend/` (§2.1 (iii)). `BACKLOG.md` item 1.
 - **[#8](https://github.com/pumasi-ai/pumasi-sign/issues/8) — the app root has
   no product page in production.** Re-measured, not inherited from the previous
   evaluation:
@@ -406,7 +418,8 @@ deliberately not in the same order.
    **more than a PDF stamper for it to run** (item 4). The first half of this
    line — a CI job over `service/` — is **done** at `ef851d6`; what is left is
    that `GATE: PASS` still does not include it and that what it includes is two
-   tests on one file.
+   tests on one file, and that the `e2e` suite — the only one that
+   exercises routes — drives `backend/` rather than the worker.
 2. **#7 explained and fixed**, on the tree that actually serves users (item 1).
    Now diagnosed; §2.2.
 3. **Surface B live and honest** — #8 deployed, with §2.3's remaining claim made
@@ -424,7 +437,9 @@ deliberately not in the same order.
 ## 4 · Known gaps, carried openly
 
 - Two backends, one product; the deployed one is covered by two tests that
-  exercise one file, and the merge gate runs neither (§2.1, Q-018, Q-025).
+  exercise one file, the merge gate runs neither, and the `e2e` suite drives the
+  other tree — so CI can be green on a live production 404, and at `ef851d6` it
+  is (§2.1, §2.2, Q-018, Q-025).
 - `main` is **not a protected branch**; CI reports and blocks nothing (§2.1).
 - No `LICENSE`, while merged-but-undeployed public copy claims Apache-2.0
   (§2.3, Q-021).
