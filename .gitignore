@@ -10,3 +10,6 @@ test-results/
 playwright-report/
 frontend/e2e/.auth/
 blob-report/
+# `wrangler dev` in service/ writes its local Durable Object, R2 and cache
+# state here. Generated, per-machine, never committed.
+.wrangler/
