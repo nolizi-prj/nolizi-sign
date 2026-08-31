@@ -47,7 +47,13 @@ test.describe("A-006 · the public landing page, rendered", () => {
   });
 
   test("renders no money figure that roadmap/MARKET.md does not carry", async ({ page }) => {
-    const market = read("roadmap/MARKET.md");
+    // The pricing table ROWS, not the whole file: MARKET.md §1 quotes the
+    // page's own false figures in prose in order to correct them, so a
+    // whole-file search reports the wrong table as backed (see A-003).
+    const market = read("roadmap/MARKET.md")
+      .split("\n")
+      .filter((line) => line.trim().startsWith("|"))
+      .join("\n");
 
     await page.goto("/");
     const table = page.locator("table").first();
@@ -59,6 +65,6 @@ test.describe("A-006 · the public landing page, rendered", () => {
     expect(figures.length, "the comparison table should still state prices").toBeGreaterThan(0);
 
     const unbacked = figures.filter((amount) => !market.includes(amount));
-    expect(unbacked, `rendered figures absent from roadmap/MARKET.md: ${unbacked.join(", ")}`).toEqual([]);
+    expect(unbacked, `rendered figures in no roadmap/MARKET.md price row: ${unbacked.join(", ")}`).toEqual([]);
   });
 });

@@ -48,7 +48,20 @@ at all, and is not taken here.
 ## S2 · Every competitor claim carrying a figure is backed by MARKET.md
 
 **S2a.** Every `$`-denominated figure anywhere in `LandingView.vue` appears
-verbatim in `roadmap/MARKET.md`.
+verbatim in one of `roadmap/MARKET.md`'s **pricing table rows** — the cells
+that were read off each vendor's own page — and **not merely somewhere in
+that file**.
+
+The distinction is the difference between a case that can fail and one that
+cannot. `MARKET.md` §1's *"A correction this file forces"* paragraph **quotes
+the page's own false figures in order to correct them**: the strings `$25`
+and `$65` are in the file, in prose, as the thing being refuted. A whole-file
+substring search therefore reports the shipped, wrong table as fully backed.
+Measured, not reasoned about — the first draft of A-003 did exactly that and
+stayed green against `d797c81`. Restricting the haystack to lines beginning
+`|` turns it red, and the seven other figures are all in table rows. This is
+L-006 caught by running the case against the tree it exists to reject, which
+is the only way it is ever caught.
 
 **S2b.** Every competitor cell that carries a `$` figure also names at least
 one plan that `MARKET.md` tabulates for that vendor. This is `MARKET.md` §1's
@@ -131,10 +144,10 @@ red; every mutation was run (L-006) and the evidence is in the commit.
 | :-- | :--- | :--- | :--- |
 | **A-001** | `STAGE` equals the stage on `roadmap/STAGE.md`'s `**Current stage:**` line | S1c | the constant or the register moves without the other |
 | **A-002** | `LandingView.vue` contains **zero** stage words; `stage.ts` contains **exactly one**, in the `STAGE` assignment | S1a, S1b | any stage word is hand-written in the view, or a second one appears in `stage.ts` (e.g. a hard-coded badge) |
-| **A-003** | every `$` figure in `LandingView.vue` appears verbatim in `MARKET.md` | S2a | `$25`/`$65` return, or any new figure lands without `MARKET.md` |
+| **A-003** | every `$` figure in `LandingView.vue` appears verbatim in a `MARKET.md` **pricing table row** | S2a | `$25`/`$65` return, or any new figure lands without `MARKET.md` |
 | **A-004** | every competitor cell carrying a `$` names a plan `MARKET.md` tabulates for that vendor, and states that vendor's own meter word | S2b, S2c | the shipped `"$10 – $30 / user / mo"` returns — no plan name, and `user` where `MARKET.md` says `sender` |
 | **A-005** | the three Apache-2.0 strings are byte-identical to `10a523d` | S3 | this packet edits (b) |
-| **A-006** | *(e2e, rendered)* `/` served to a signed-out visitor shows the register's badge, shows no `BETA`, and every money figure in the rendered comparison table appears in `MARKET.md` | S1b, S1d, S2a | the page renders a stage or a price the repository cannot back |
+| **A-006** | *(e2e, rendered)* `/` served to a signed-out visitor shows the register's badge, shows no other rung, and every money figure in the rendered comparison table appears in a `MARKET.md` pricing table row | S1b, S1d, S2a | the page renders a stage or a price the repository cannot back |
 
 **A-004's plan names and A-003's figures are parsed out of `MARKET.md` at
 test time.** Neither is written into the test, so neither can fork from the

@@ -2,12 +2,20 @@
 /**
  * Pumasi Sign — Public Standalone Marketing Landing Page
  *
- * Designed to communicate value, transparent limitations, and current Beta stage
- * to unauthenticated visitors with direct zero-friction CTAs.
+ * Designed to communicate value, transparent limitations, and the stage
+ * `roadmap/STAGE.md` records, to unauthenticated visitors with direct
+ * zero-friction CTAs.
+ *
+ * This file writes no stage word of its own and no competitor figure of its
+ * own. The stage comes from `../stage` (one place, checked against
+ * `roadmap/STAGE.md`); the competitor prices and limits below are the ones
+ * `roadmap/MARKET.md` read off each vendor's own pricing page on the date
+ * cited under the table. See `spec/0001/SPEC.md`.
  */
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../store/auth";
+import { STAGE_BADGE, STAGE_LABEL } from "../stage";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -31,8 +39,8 @@ function goToSignIn() {
   <div class="landing-page">
     <!-- Top Announcement Banner: Stage & Transparency -->
     <div class="stage-banner bg-slate-900 text-white py-2 px-4 text-center text-caption d-flex align-center justify-center gap-2">
-      <v-chip size="x-small" color="primary" variant="flat" class="font-weight-bold uppercase">BETA</v-chip>
-      <span>Pumasi Sign is in active Beta — Unmetered PDF stamping &amp; SHA-256 audit certificates under Apache-2.0.</span>
+      <v-chip size="x-small" color="primary" variant="flat" class="font-weight-bold uppercase" data-testid="stage-badge">{{ STAGE_BADGE }}</v-chip>
+      <span>Pumasi Sign is in active {{ STAGE_LABEL }} — Unmetered PDF stamping &amp; SHA-256 audit certificates under Apache-2.0.</span>
     </div>
 
     <!-- Navigation Header -->
@@ -166,16 +174,24 @@ function goToSignIn() {
         </thead>
         <tbody>
           <tr>
-            <td class="font-weight-medium">Per-User License Fee</td>
+            <td class="font-weight-medium">Per-Seat Subscription</td>
             <td class="text-center font-weight-bold text-primary">$0 (Unmetered)</td>
-            <td class="text-center text-medium-emphasis">$25 – $65 / user / mo</td>
-            <td class="text-center text-medium-emphasis">$10 – $30 / user / mo</td>
+            <td class="text-center text-medium-emphasis">
+              $11 / mo (Personal)<br />$30 – $45 / user / mo (Standard, Business Pro)
+            </td>
+            <td class="text-center text-medium-emphasis">
+              $10 – $12 / sender / mo (Light)<br />$30 – $36 / mo for 3 senders (Business)
+            </td>
           </tr>
           <tr>
-            <td class="font-weight-medium">Monthly Envelope Limits</td>
+            <td class="font-weight-medium">Envelope / Document Limits</td>
             <td class="text-center font-weight-bold text-primary">Unlimited</td>
-            <td class="text-center text-medium-emphasis">100 / yr hard cap</td>
-            <td class="text-center text-medium-emphasis">Metered by tier</td>
+            <td class="text-center text-medium-emphasis">
+              5 / mo (Personal)<br />100 / user / yr (Standard, Business Pro)
+            </td>
+            <td class="text-center text-medium-emphasis">
+              3 / mo (Free)<br />Unlimited documents on paid tiers
+            </td>
           </tr>
           <tr>
             <td class="font-weight-medium">SHA-256 Audit Certificates</td>
@@ -197,6 +213,23 @@ function goToSignIn() {
           </tr>
         </tbody>
       </v-table>
+
+      <!--
+        S2e: scoped deliberately to pricing and limits. Two rows above -- the
+        audit-certificate row and the branding row -- are feature claims that
+        roadmap/MARKET.md does not cover, and a blanket "sources" line would
+        read as sourcing them. See spec/0001/SPEC.md S4.
+      -->
+      <p class="text-caption text-medium-emphasis mt-4">
+        Competitor <strong>pricing and limits</strong> above are as published on each vendor's own pricing page,
+        read <strong>2026-08-31</strong> —
+        <a href="https://ecom.docusign.com/plans-and-pricing/esignature" target="_blank" rel="noopener">DocuSign</a>
+        and
+        <a href="https://www.signwell.com/pricing/" target="_blank" rel="noopener">SignWell</a>.
+        The figures as read, with their sources, are recorded in
+        <a href="https://github.com/pumasi-ai/pumasi-sign/blob/main/roadmap/MARKET.md" target="_blank" rel="noopener">roadmap/MARKET.md</a>.
+        Prices move; the date is part of the claim.
+      </p>
 
       <!-- Transparent Stage Limitation Disclosure -->
       <v-alert type="info" variant="tonal" class="mt-8">

@@ -26,6 +26,19 @@ const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
 
 const STAGE_MD = read("roadmap/STAGE.md");
 const MARKET_MD = read("roadmap/MARKET.md");
+
+/**
+ * MARKET.md's pricing table rows — the cells read off each vendor's own page.
+ *
+ * A figure must be backed by one of THESE, not by the file at large. §1's
+ * "A correction this file forces" paragraph quotes the landing page's own
+ * false figures in order to refute them, so `$25` and `$65` are in the file
+ * as prose. Searching the whole file reports the wrong table as fully backed:
+ * the first draft of A-003 did exactly that and stayed green against d797c81.
+ */
+const MARKET_PRICE_ROWS = MARKET_MD.split("\n")
+  .filter((line) => line.trim().startsWith("|"))
+  .join("\n");
 const STAGE_TS = read("frontend/src/stage.ts");
 const LANDING_VUE = read("frontend/src/views/LandingView.vue");
 
@@ -108,11 +121,19 @@ describe("A-002 · a stage word is written in exactly one place", () => {
 });
 
 describe("A-003 · no money figure on the page that MARKET.md does not carry", () => {
-  it("every $ figure in LandingView.vue appears verbatim in roadmap/MARKET.md", () => {
-    // Red on the shipped "$25 – $65 / user / mo": neither figure is in
-    // MARKET.md, which read DocuSign's own pricing page on 2026-08-31.
-    const unbacked = moneyIn(LANDING_VUE).filter((amount) => !MARKET_MD.includes(amount));
-    expect(unbacked, `figures absent from roadmap/MARKET.md: ${unbacked.join(", ")}`).toEqual([]);
+  it("every $ figure in LandingView.vue appears in a MARKET.md pricing table row", () => {
+    // Red on the shipped "$25 – $65 / user / mo": neither figure was read off
+    // DocuSign's own pricing page on 2026-08-31, so neither is in a table row.
+    const unbacked = moneyIn(LANDING_VUE).filter((amount) => !MARKET_PRICE_ROWS.includes(amount));
+    expect(unbacked, `figures in no roadmap/MARKET.md price row: ${unbacked.join(", ")}`).toEqual([]);
+  });
+
+  it("is capable of failing — the figures it replaced are in no price row", () => {
+    // Guards the guard (L-006). If MARKET.md is ever restructured so that its
+    // prose and its tables stop being distinguishable, this goes red and says
+    // so, instead of A-003 quietly becoming decorative again.
+    expect(MARKET_MD).toContain("$25");
+    expect(MARKET_PRICE_ROWS).not.toContain("$25");
   });
 });
 
