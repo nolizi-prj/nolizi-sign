@@ -48,7 +48,7 @@ fact from **one** source (L-007) rather than restating it.
   `pumasi/DECISIONS.md` **Q-021** and it is the steward's both ways: adding
   the file is an outward grant a third party may rely on, and removing the
   claim is the entry's named alternative with a cost listed in three places.
-  All three strings are left byte-identical, and acceptance case **A-004**
+  All three strings are left byte-identical, and acceptance case **A-005**
   exists to prove it.
 - **(d), the deploy.** `pumasi/DECISIONS.md` **Q-012** is open and explicitly
   outside CHARTER Part 0's proceed-on-default rule. No `wrangler deploy`. The

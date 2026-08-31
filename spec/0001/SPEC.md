@@ -74,24 +74,36 @@ covered — see S4.
 ## S3 · The Apache-2.0 claim is untouched
 
 The three strings at `LandingView.vue:35`, `:72` and `:194` are byte-identical
-to `10a523d`. This is Q-021 and it is the steward's. A-004 proves it.
+to `10a523d`. This is Q-021 and it is the steward's. **A-005** proves it.
 
 ## S4 · What is left standing, named rather than hidden
 
-The comparison row **"Multi-Tenant Brand Customization"** asserts
-*"Enterprise tier only"* (DocuSign) and *"Business tier only"* (SignWell).
-These are uncited competitor claims and `MARKET.md` backs neither: its §1 is
-pricing and limits only, and it says in terms that *"feature-matrix work
-[is] not here yet"*.
+Two comparison rows carry competitor claims that `MARKET.md` does not back,
+because they are not pricing or limits:
+
+- **"SHA-256 Audit Certificates"** — *"Included"* for both vendors.
+- **"Multi-Tenant Brand Customization"** — *"Enterprise tier only"*
+  (DocuSign) and *"Business tier only"* (SignWell).
+
+`MARKET.md` §1 is pricing and limits, and the file says in terms that
+*"positioning, funnel and feature-matrix work are not here yet"*. So these
+are uncited feature claims. One of them is favourable to the competitors and
+one is not; both are uncited either way, and the product-manager role's rule
+does not have a favourable-claims exemption.
 
 They are **not** removed here, for two reasons. The product manager scoped
-this packet to (a) and (c) after reading the page line by line, and this row
-is neither; and removing a row is a content decision on a marketing surface
-whose owner is the product manager and the marketing manager, not this seat.
-It is escalated in the return line and the digest instead, so the next
-evaluation meets it rather than rediscovers it. **This spec therefore does
-not claim that the page carries no uncited competitor claim — only that it
-carries no unbacked competitor figure.**
+this packet to (a) and (c) after reading this page line by line, and these
+rows are neither; and removing a row is a content decision on a marketing
+surface whose owner is the product manager and the marketing manager, not
+this seat. Extending `MARKET.md` to a feature matrix is that role's work and
+`MARKET.md` says it is not done. They are escalated in the return line and
+the digest instead, so the next evaluation meets them rather than
+rediscovers them.
+
+**This spec therefore does not claim that the page carries no uncited
+competitor claim — only that it carries no unbacked competitor figure, and
+that the citation it adds (S2e) is scoped to pricing and limits so that it
+cannot be read as sourcing these two rows.**
 
 ## S5 · Out of scope, stated so a reviewer can hold it
 
