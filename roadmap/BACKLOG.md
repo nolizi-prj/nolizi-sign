@@ -3,14 +3,24 @@
 **Owned by the product-manager role** ([`pumasi-ops/roles/product-manager.md`](https://github.com/pumasi-ai/pumasi-ops/blob/main/roles/product-manager.md), duty 5).
 First pass 2026-08-30, steward-directed: *"introduce very similar UI and UX
 [to the incumbent] in pumasi sign — let these items in the queue."*
-**Reordered 2026-08-31** after the product evaluation that published
-[`STAGE.md`](STAGE.md) and [`VALUE.md`](VALUE.md); the reasoning is in that
+**Reordered 2026-08-31 (second reorder)** after the product evaluation that
+re-measured this file against `main` @ `ef851d6`; the reasoning is in that
 commit's message, and the steward vetoes by reverting.
 
 One list, features and bugs together, because a priority that cannot compare
 them is not a priority. Every entry points at its source and carries one line
 of why-here. **The top of this file is what the project manager's next coder
 packet builds.**
+
+**That last sentence is now load-bearing, and it is why this reorder exists.**
+The previous top two entries were both stale: item 1 ranked pending in full
+though halves (a) and (c) merged at `a49f594`, and item 2 was delivered at
+`ef851d6`. Worse, what remained of item 1 was **not a build** — (b) waits on
+`pumasi/DECISIONS.md` **Q-021** and (d) is a deploy, **Q-012** — so a coder
+packet taking the top of this file would have delivered nothing. Entries that
+no coder may execute are no longer in the numbered order; they are in
+[Blocked](#blocked--not-in-the-build-order-until-a-steward-answers) below, and
+the numbered order is again a list of things somebody can build tomorrow.
 
 Context the ordering assumes: UX-parity phase 1 is **delivered** (PR #1, merged
 `70c692e`). The parity source of truth is the clean-room spec
@@ -20,102 +30,173 @@ below) with the phase map in
 from the spec, never from the tour screenshots** (product-hunt `TOUR.md`,
 "Studying clean").
 
-**Why the parity items moved down.** They did not lose their mandate; six items
-got in front of them. Five are things a real user met or a rule requires, and
-one is the gate that makes every "it works" claim below it checkable. Each of
-the six is small. The parity work resumes at item 8 and is otherwise untouched.
+**Why the parity items are still down at 8.** They did not lose their mandate.
+Six items were in front of them at the last reorder; two of those six are now
+retired, two arrived from coder job `0032`, and one moved into Blocked. The
+count is unchanged and so is the reason: each of items 1–7 is either something
+a real user met, something a rule requires, or the thing that makes an "it
+works" claim below it checkable. Each is small. The parity work resumes at
+item 8 and is otherwise untouched.
 
 ---
 
 ## The order
 
-**1 · Make the landing page true, then let users have it** — source: issue
-[#8](https://github.com/pumasi-ai/pumasi-sign/issues/8) (`accepted`,
-`priority: high`), [`STAGE.md`](STAGE.md) §2.3, [`MARKET.md`](MARKET.md) §1.
-`LandingView.vue` and the public `/` route are merged (`10a523d`) and **the
-deployment does not have them** — the live bundle
-`/assets/index-j38Qwibz.js` was fetched at HTTP 200 on 2026-08-31 and contains
-zero occurrences of `landing`. So #8 closes on a deploy, not a commit. But that
-deploy is the moment three unbacked claims on the page become public, so the
-build half comes first:
-   - **(a)** the `BETA` chip and "in active Beta" banner (`LandingView.vue:34`)
-     → the stage this product actually has. `STAGE.md` says `alpha`;
-     `STAGE_PLAYBOOK.md`'s own Stage-1 Surface B deliverable asks for
-     `[ALPHA - ACTIVE DEVELOPMENT]`.
-   - **(b)** "Apache-2.0 (Open Source)" in the banner and the comparison table
-     → there is no `LICENSE` file in this repository and GitHub reports no
-     licence. Either the file lands (`pumasi/DECISIONS.md` **Q-021**, default:
-     add Apache-2.0, matching `pumasi-web` and `pumasi-tunnel`) or the claim
-     goes. Do not deploy the claim ahead of the file.
-   - **(c)** the uncited competitor pricing → cite `MARKET.md`'s figures or
-     drop the rows. Against the vendors' own pages on 2026-08-31 the page's
-     "$25 – $65" and "$10 – $30" are wrong at both ends. Precedent for removal
-     rather than argument: `pumasi-booking` `0d1674d`.
-   - **(d)** then deploy — `wrangler deploy` from `service/`, **not** the
-     Railway path `CLAUDE.md` describes (Q-018). Note that the same deploy
-     carries ~5 commits of unreviewed UX change; it should be deliberate, not
-     incidental.
-Why here: it is the oldest open high-priority defect, the fix is already
-written, and every day it waits the app root shows strangers nothing. **Whose
-hand runs (d) is `pumasi/DECISIONS.md` Q-012, still open** — (a)–(c) need no
-deploy decision to be written, reviewed and merged, so a coder packet that
-cannot deploy still delivers this item's build half and says so.
-
-**2 · Make the gate cover the tree users actually meet** — source:
-`pumasi/DECISIONS.md` **Q-018** parts (a) and (b), [`STAGE.md`](STAGE.md) §2.1.
-`.github/workflows/ci.yaml` contains no occurrence of `service`. Measured
-2026-08-31: `backend/` has 541 test functions (545 collected) and the e2e job
-drives 6 Playwright specs — all on a tree no user reaches — while `service/`,
-which serves `sign.pumasi.ai`, has **2 tests** and no CI job. (a) `CLAUDE.md`
-stops calling Railway/FastAPI *the* deployment and names the worker; (b) CI
-gains a job running `service/src/test/`. Neither deletes anything or re-points
-anything — those parts of Q-018 stay the steward's. Why here: this is
-[L-006](https://github.com/pumasi-ai/governance/blob/main/lessons/L-006-tests-that-cannot-fail.md)
-at suite scale, and until it is done every later entry's "tests pass" means
-nothing about production. Ranked first by coder job `0018`; it sits at 2 only
-because item 1 is already built and users are looking at the gap today.
-
-**3 · #7: "sign in again" gives an error — explain it on the deployed tree** —
+**1 · #7: "sign in again" sends the user to a raw 404 — the cause, measured** —
 source: issue [#7](https://github.com/pumasi-ai/pumasi-sign/issues/7)
-(`accepted`, `priority: high`). `SignedOutView.vue`'s button resolves through
-`utils/http.ts:30` to `/api/auth/login?next=/`. It was provisionally linked to
-#9; #9 is now closed as another product's defect, which removes the
-explanation and leaves this report standing with no cause. Reproduce against
-`sign.pumasi.ai` (the worker), not against a local FastAPI run — that is the
-mistake this backlog is now shaped to prevent. Why here: a signed-out user who
-cannot get back in is the plainest counterexample to the next stage's whole
-promise.
+(`accepted`, `priority: high`). **This entry was "reproduce it"; it is now
+"here is the cause".** `SignedOutView.vue:26` renders *Sign in again* as
+`<a :href="signInUrl">`, and `signInUrl` is `loginRedirectUrl("/")` =
+`/api/auth/login?next=%2F` (`utils/http.ts:30`) — a full-page navigation, not
+a router push. Measured against the deployed tree on 2026-08-31:
 
-**4 · #6: the branding colour buttons touch** — source: issue
+```
+$ curl -s -i 'https://sign.pumasi.ai/api/auth/login?next=%2F'
+HTTP/2 404
+{"error":"Endpoint not found"}
+```
+
+So the user is handed the worker's error JSON, rendered raw in the browser.
+**`GET /api/auth/login` is a `backend/` route** — `backend/app/routers/auth.py:82`
+is `@router.get("/login")` under prefix `/api/auth` — and the worker defines
+**no** `GET` under `/api/auth/login` at all: `service/src/durable.ts` has only
+`POST /api/auth/login/request` (`:775`) and `POST /api/auth/login/verify`
+(`:798`). The SPA calls a route that exists only in the tree nobody reaches.
+
+Why here: it is the only `priority: high` defect that is **live, on the entry
+path, and buildable today** — the other one, #8, is Blocked. A signed-out user
+who cannot get back in is the plainest counterexample to the next stage's
+whole promise, and the cause is no longer a mystery to be budgeted for. It is
+also **[L-009](https://github.com/pumasi-ai/governance/blob/main/lessons/L-009-two-paths-one-claim.md)
+in this product for the third time** (after Q-018's `dev-login` 404 and its
+`establishSession` domain-gate divergence): the frontend was written against
+`backend/`, and `backend/` is not what serves users. Which of the two repairs
+is right — point the button at `loginPageUrl("/")`, the SPA `/login` page that
+already exists one function below it in the same file, or add the missing
+route to the worker — is the coder's call with a spec, and it decides whether
+the fix lands in `frontend/` or in `service/`. **If it lands in `service/`,
+item 2 below covers it and item 2 should ride in the same packet.**
+
+**2 · Make `GATE: PASS` cover the tree users actually meet** — source: coder
+job `0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`), `pumasi/DECISIONS.md`
+**Q-025** rider (a), [`STAGE.md`](STAGE.md) §2.1. **CI now runs the served
+tree; the merge gate still does not.** Re-measured 2026-08-31, not inherited:
+`pumasi/tools/gate.sh:25` is `if npm test; then echo "   tests: PASS"`, and
+this repository's root `package.json` `test` script is exactly
+`cd frontend && npm run test:unit && npx vue-tsc -b --force`. The string
+`service` occurs **zero** times in that script and zero times in `gate.sh`. So
+a coder can print `GATE: PASS` here having run zero service tests — on the
+only tree that answers `sign.pumasi.ai`.
+
+**And the gate is the whole gate.** Measured this tick:
+`GET /repos/pumasi-ai/pumasi-sign/branches/main/protection` → **404 "Branch
+not protected"**. The `service` CI job reports; it blocks nothing. Between a
+change and `main` there is one check, it is run by hand by the author, and it
+does not run the deployed tree's suite. That is Q-025's question — *is
+`GATE: PASS` an agent's own report?* — in its sharpest form in the fleet, and
+it is sharper here than on `pumasi-booking` because here CI **does** run the
+served tree and the gate still does not.
+
+Why here rather than at 1: the same sentence that put the old item 2 above the
+old item 3 no longer holds. When CI covered `service/` with nothing, an
+ungated suite meant the code was untested; now CI runs it on every push, so
+the backstop exists and this entry is about what a *string in a release note*
+evidences, not about whether production code is exercised. That is real and it
+is one rung below a user who cannot sign in. Scope: the root `package.json`
+`test` script, plus whatever `service` needs to be runnable from the root
+(`npm ci` and `npm run build` in `service/` before `npm test` — `dist/` is
+`.gitignore`d, which is the trap `.github/scripts/assert-service-suite-ran.sh`
+and frozen case A-103 exist for). **Do not shrink the frontend half to make
+room.** Left alone by `0032` on purpose: the **old** BACKLOG item 2 (now
+Retired) and Q-018(b) both said
+*"CI gains a job"* in those words, and the root `package.json` was authored one
+commit earlier under `spec/0001`'s scope.
+
+**3 · #6: the colour buttons touch — on three views, not one** — source: issue
 [#6](https://github.com/pumasi-ai/pumasi-sign/issues/6) (`accepted`,
-`priority: normal`). `BrandingView.vue:113`, `:128`, `:142` use `gap-2` /
-`gap-3`. This frontend has no Tailwind — Vuetify `^3.13.0` only, whose utility
-is `ga-*`; `.ga-2` is in `vuetify.css` and `.gap-2` is not, and the sole
-`.gap-2` in the repository is inside a `<style scoped>` block in
-`LandingView.vue`. The classes are inert on `/branding`. Why here: three
-characters, a real user noticed, and it ships free alongside anything else.
+`priority: normal`). Re-measured at `ef851d6` and **wider than this entry
+previously recorded**. This frontend has no Tailwind — Vuetify `^3.13.0` only,
+whose utility is `ga-*`; `.ga-2` is in `vuetify.css` and `.gap-2` is not
+(counted: 1 and 0). Inert `gap-*` classes are in **three** views:
+
+- `BrandingView.vue:113`, `:128`, `:142` — the reported surface.
+- `LoginView.vue:119` — **not previously listed**, and it is the sign-in page,
+  the same surface item 1 is about.
+- `LandingView.vue` (`:41`, `:48`, `:53`, `:90`) — these *do* render, because
+  that file defines `.gap-2/.gap-3/.gap-4` in its own `<style scoped>` block
+  (`:260`–`:262`). Left alone or converted for consistency; the coder's call.
+
+Why here: three characters per site, a real user noticed, and `LoginView.vue`
+means it now **ships free alongside item 1**, which is already in that file's
+neighbourhood.
+
+**4 · Test the deployed tree beyond its PDF stamper** — source: coder job
+`0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`), `pumasi/DECISIONS.md`
+**Q-018**, [`STAGE.md`](STAGE.md) §2.1, `CLAUDE.md` (*"test coverage here is
+thin and you should know it before you trust it"*). Both service test files
+were **read in full** this tick rather than counted, and the finding is worse
+than "two tests":
+
+- `service/src/test/stamping.test.ts` (89 lines) and
+  `service/src/test/e2e-workflow.test.ts` (107 lines) have **identical import
+  lists**: `node:test`, `node:assert/strict`, `pdf-lib`, and
+  `stampAndCertifyPdf` from `../core/stamping.js`. Nothing else. They are two
+  builds of the same scenario against the same pure function.
+- **`e2e-workflow.test.ts` is not an end-to-end test of anything.** It calls
+  no route, starts no worker, touches no store. A reader of the file *name* —
+  or of `STAGE.md`'s table row — will over-read the coverage, and this
+  evaluation nearly did.
+- Both assert **shape, not content**: stamped bytes longer than original, page
+  count 2, two 64-char hex hashes, and `notEqual(originalHash, completedHash)`.
+  No assertion that a signer's name, a date or a checkbox value reached the
+  page. `notEqual` on the hashes passes for *any* mutation, including a wrong
+  one.
+- Covered by nothing: `durable.ts` (sessions, envelopes, signing, the whole
+  API surface, and the `establishSession` domain gate Q-018 flags as diverging
+  from `backend/`), `worker.ts`, `storage/r2.ts`, `mail.ts`, `feedback.ts`,
+  `convert/graph.ts`.
+
+Why here: now that the `service` CI job exists, *"the tests pass"* finally says
+something about production — and what it says is "the PDF stamper works". This
+entry decides how much more it should say. Ranked below items 1–3 because it is
+the only one of the four that is days rather than characters, and CLAUDE.md
+correctly calls widening it this file owner's call rather than a side errand.
+Suggested first slice, so a packet has a shippable edge: `establishSession`'s
+account-creation rule (the Q-018 divergence, and the one with a live user
+consequence), then session validation, then envelope state transitions.
 
 **5 · The feedback screenshot must be attached, not pre-attached** — source:
-`PRODUCT-RULES.md` **PR-2** (v1.0, read from `pumasi` branch
-`worktree-product-rules` `0115758`; not on `pumasi` main — that is Q-017, and
-absence from main is not compliance), CHARTER §5.2.
-`FeedbackDialog.vue:188` auto-captures the page and pre-attaches it; PR-2 says
-"a screenshot travels only when the user attaches one". The user sees it and
-can remove it, so today this is opt-out and informed — but in an e-signature
-product the page being captured is somebody's contract, and §5.2 says *never
-the user's own material*. Make it a button the user presses. Why here: PR-2
-binds at the `beta` promotion, this is the only clause it fails, and it is
-cheaper to fix now than to hold a promotion for.
+`PRODUCT-RULES.md` **PR-2** (v1.0, read fresh this packet from `pumasi` branch
+`worktree-product-rules` `0115758`; still not on `pumasi` main — that is
+**Q-017**, and absence from main is not compliance), CHARTER §5.2.
+Re-checked at `ef851d6` and **unchanged**: opening the dialog sets a fallback
+canvas as the attachment immediately (`FeedbackDialog.vue:185`–`188`,
+`screenshotIsAuto.value = true`) and then replaces it asynchronously with a
+real `html2canvas(document.body)` capture (`:193`–`:197`). The user presses
+nothing. PR-2 says *"a screenshot travels only when the user attaches one"*.
+The user sees it and can remove it (`removeScreenshot`, `:201`), so today this
+is opt-out and informed — but in an e-signature product the page being
+captured is somebody's contract, and §5.2 says *never the user's own material*.
+Make it a button the user presses. Why here: PR-2 binds at the `beta`
+promotion, this is the only clause it fails, and it is cheaper to fix now than
+to hold a promotion for.
 
 **6 · One version number, and put it in the reports** — source:
 `PRODUCT-RULES.md` **PR-1**, which binds *always, from the first commit*, and
-is not met. There is no root `package.json`; `frontend/package.json` reads
-`0.0.0` and `service/package.json` reads `0.1.0` (two hand-maintained copies —
-L-007); no version is visible to a user anywhere; there is no `/version`
-endpoint; and `FeedbackDialog.vue::buildContext` sends page, browser, platform,
-viewport and timezone but not the version. Why here: all six issues in this
-backlog are defect reports without a version, which is a request to guess, and
-the fix is one source of truth plus two readers.
+is not met. **Narrowed since the last reorder**: a root `package.json` now
+exists (authored under `spec/0001` for `gate.sh`), so the missing piece is no
+longer the file. Measured at `ef851d6`: the root `package.json` carries **no
+`version` field** — deliberately, and it says so in its own `description`, to
+avoid taking this item inside a packet scoped to something else;
+`frontend/package.json` reads `0.0.0` and `service/package.json` reads `0.1.0`
+(two hand-maintained copies — L-007); no version is visible to a user anywhere
+in the SPA; there is no `/version` endpoint; and `FeedbackDialog.vue::buildContext`
+(`:105`–`:122`) sends **thirteen** fields — page, URL, user, browser, platform,
+language, timezone, viewport, screen, network, time, cores, device memory — and
+not the version. Why here: all five open issues are defect reports without a
+version, which is a request to guess, and the fix is one source of truth plus
+two readers. Note it rides naturally with item 2, which is already editing the
+root `package.json`.
 
 **7 · A settings shell, with branding inside it** — source: issue
 [#5](https://github.com/pumasi-ai/pumasi-sign/issues/5) (`accepted`,
@@ -209,6 +290,61 @@ live progress). Why last: worth doing only once the surfaces it teaches
 
 ---
 
+## Blocked — not in the build order until a steward answers
+
+Entries here have real work left, and **no coder may execute it today**. They
+are out of the numbered list rather than sitting at its top, because the top
+of that list is what the next coder packet builds, and a packet that takes an
+entry nobody may execute delivers nothing. They come back into the order the
+day their window closes, at whatever rank they then deserve.
+
+**B1 · Make the landing page's licence claim true, then let users have it** —
+source: issue [#8](https://github.com/pumasi-ai/pumasi-sign/issues/8)
+(`accepted`, `priority: high`), [`STAGE.md`](STAGE.md) §2.3.
+**This is what is left of the old item 1** after halves (a) and (c) were
+delivered at `a49f594` (see Retired). Both remaining halves are steward-held
+and **neither is released by CHARTER Part 0**:
+
+- **(b)** *"Apache-2.0 (Open Source)"* is still on the page — the banner
+  (`LandingView.vue:43`), the hero strip (`:80`) and the comparison table's
+  License row (`:210`) — and this repository still carries no `LICENSE`.
+  **`pumasi/DECISIONS.md` Q-021**, open; its named default is to add
+  Apache-2.0 byte-identical to `pumasi-web/LICENSE`, **and nobody has taken
+  it** — `pumasi-web` marketing job `0035` raised exactly that to the steward
+  at 12:58 on 2026-08-31. Adding a licence is an outward grant a third party
+  may rely on, which is why Part 0's reversibility rule does not release it.
+  Frozen case `spec/0001` **A-005** pins those three strings byte-identical to
+  `10a523d` and **retires with Q-021** — whichever way that entry lands, A-005
+  is updated or deleted in the same commit.
+- **(d)** then deploy — `wrangler deploy` from `service/`, **not** the Railway
+  path (Q-018). **`pumasi/DECISIONS.md` Q-012**, open and explicitly outside
+  Part 0's proceed-on-default rule. This entry does not ask for the deploy and
+  does not schedule it; it records that #8 closes on one. Note the same deploy
+  would carry ~6 commits of otherwise-unreviewed change; it should be
+  deliberate, not incidental.
+
+**Verified undeployed again this tick, not inherited from job `0024`.** The
+live bundle filename is unchanged, which is itself the finding:
+
+```
+$ curl -s https://sign.pumasi.ai/ | grep -o '/assets/[^"]*\.js'
+/assets/index-j38Qwibz.js
+$ curl -s -o idx.js -w '%{http_code} %{size_download}\n' \
+    https://sign.pumasi.ai/assets/index-j38Qwibz.js
+200 839941
+$ grep -oic 'landing' idx.js
+0
+```
+
+Zero occurrences of `landing`, `LandingView` or `Apache-2.0` in 839 941 bytes.
+This is a **stronger** measurement than a missing component chunk would be:
+`router/index.ts:16` registers the route eagerly as `name: "landing"` and
+lazy-loads only its component, so the route *name* would be in the main bundle
+even if the view were code-split — and `index.html` preloads no other chunk.
+The route is not in the deployment at all.
+
+---
+
 ## Retired
 
 **~~Green main: fix the 4 backend pytest failures~~ — met 2026-08-31.** Was
@@ -219,7 +355,60 @@ failures were single-tenant expectations against multi-tenant normalization,
 `1c8590d`, and `e2e` had two further causes, `5cb3bf8`). Retired rather than
 deleted, with one thing carried forward: **that gate covers `backend/`, which
 is not what users reach.** The re-sourced version of this entry's purpose —
-*a gate whose green means something* — is now item 2.
+*a gate whose green means something* — became the old item 2, retired directly
+below, whose own successor is item 2 of the current order.
+
+**~~Make the gate cover the tree users actually meet~~ — delivered 2026-08-31
+at `ef851d6`** (coder job `0032`, `pumasi/DECISIONS.md` Q-018 parts (a), (b),
+(c)). Was item 2. Confirmed independently by this evaluation rather than taken
+from the job's report:
+
+- `.github/workflows/ci.yaml` now defines **four** jobs — `backend` (`:10`),
+  `frontend` (`:60`), **`service` (`:104`)** and `e2e` (`:144`). The `service`
+  job checks out, `npm ci`s, **builds** (`dist/` is `.gitignore`d, so the
+  build is not an optimisation), runs the suite through `tee`, and then runs
+  `.github/scripts/assert-service-suite-ran.sh` against its own reported
+  counts — deliberately independent of the build step, so deleting that step
+  still turns the job red.
+- Run [33420378497](https://github.com/pumasi-ai/pumasi-sign/actions/runs/33420378497)
+  on `main` @ `ef851d6`: `backend` ✓, `frontend` ✓, `service` ✓, `e2e` ✓.
+- **The job can fail, and that was proven on real runs, not argued.** Run
+  [33419949879](https://github.com/pumasi-ai/pumasi-sign/actions/runs/33419949879)
+  (`proof/service-break`): `service` **failure** while `backend`, `frontend`
+  and `e2e` all succeeded. Run
+  [33419950651](https://github.com/pumasi-ai/pumasi-sign/actions/runs/33419950651)
+  (`proof/service-unbuilt`): `service` **failure** on a tree with no build
+  step — the exit-0-having-run-nothing trap (L-006), caught by the guard.
+- `CLAUDE.md` now opens with *"there are two backends"*, names the worker as
+  what serves `sign.pumasi.ai`, and carries Q-018 part (c) as a sentence
+  rather than by deleting a job.
+
+**Retired, not deleted, and what is carried forward:** Q-018 itself stays open
+— nothing was deleted, the domain was not re-pointed, no data moved, and
+*which tree is the product* is untouched. Two successors are in the order
+above: the gate half this never covered is **item 2**, and the thinness of
+what the new job runs is **item 4**.
+
+**~~Item 1(a): the `BETA` chip, and 1(c): the uncited competitor pricing~~ —
+merged 2026-08-31 at `a49f594`** (coder job `0026`, under `spec/0001`).
+Verified at `ef851d6`:
+
+- **(a)** `LandingView.vue` no longer writes a rung. `frontend/src/stage.ts`
+  exports `STAGE = "alpha"` as the single constant, with `STAGE_LABEL` and
+  `STAGE_BADGE` derived from it by expression; the template renders
+  `{{ STAGE_BADGE }}` and `in active {{ STAGE_LABEL }}`. The register stays
+  `roadmap/STAGE.md` and frozen case **A-001** fails the build if the two move
+  apart — L-007 closed by a gate rather than by a copy nobody checks.
+- **(c)** the comparison table's figures now match
+  [`MARKET.md`](MARKET.md) §1's cited pricing rows (DocuSign $11 / $30 / $45
+  with the 5-per-month and 100-per-user-per-year limits; SignWell $10–$12 per
+  **sender** and $30–$36 for three senders), read from each vendor's own page
+  on 2026-08-31. The shipped `$25 – $65` and `$10 – $30` are gone, and
+  `MARKET.md` — which did not exist at the last reorder — now does. Frozen
+  cases **A-003** and **A-004** parse the figures and plan names out of
+  `MARKET.md` at test time, so neither can fork from the file it checks.
+
+Half (b) and the deploy (d) are **not** retired; they are B1 above.
 
 ---
 
