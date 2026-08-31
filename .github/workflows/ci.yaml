@@ -74,9 +74,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # -b is not optional: frontend/tsconfig.json is a solution file (empty
+      # `files`, two `references`), so `vue-tsc --noEmit` has no program to
+      # check and exits 0 on a tree with type errors. Measured against
+      # a49f594 with a deliberate error in src/stage.ts: --noEmit exits 0,
+      # -b exits 2. --force because this step must check, not consult a
+      # tsbuildinfo the Build step below may already have written.
       - name: Type-check
         working-directory: frontend
-        run: npx vue-tsc --noEmit
+        run: npx vue-tsc -b --force
 
       - name: Unit tests
         working-directory: frontend
@@ -85,6 +91,55 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # service/ is the Cloudflare Worker that answers sign.pumasi.ai (see
+  # service/wrangler.jsonc's `custom_domain`). Until this job existed, CI ran
+  # 541 backend test functions and six Playwright specs against the FastAPI
+  # tree in backend/ -- which no user reaches -- and nothing at all against
+  # this one. That is pumasi/DECISIONS.md Q-018 and roadmap/BACKLOG.md item 2.
+  #
+  # Which of the two trees IS the product is still open (Q-018) and is the
+  # steward's; this job deletes nothing and re-points nothing. It only stops
+  # `tests pass` from being silent about production.
+  service:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      # Not optional, and not merely an optimisation: `npm test` below runs
+      # dist/, and service/dist/ is .gitignore'd. Without this step the suite
+      # matches no files, runs zero assertions and exits 0 (L-006).
+      # `tsc -p tsconfig.json` is also this tree's only type-check.
+      - name: Build the worker
+        working-directory: service
+        run: npm run build
+
+      - name: Run the service suite
+        working-directory: service
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/service-suite.tap"
+
+      # The suite exiting 0 is not evidence that it ran. This reads its own
+      # reported counts and the compiled tree, and is deliberately independent
+      # of the Build step above, so deleting that step still turns this job
+      # red. Exercised by frozen case A-104.
+      - name: Assert the suite actually ran (L-006)
+        run: >-
+          .github/scripts/assert-service-suite-ran.sh
+          service/src/test service/dist/test "$RUNNER_TEMP/service-suite.tap"
 
   e2e:
     runs-on: ubuntu-latest
