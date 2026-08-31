@@ -129,12 +129,18 @@ project is built to notice.
 
 - **Not "open source."** No licence (§1, C5).
 - **Not "beta," and not "reliable for strangers."** [`STAGE.md`](STAGE.md) §2
-  lists five reasons, the largest being that the deployed tree carries **two
-  tests, both on the PDF stamper**. *Corrected 2026-08-31 (third evaluation):*
-  this line used to end "and no CI gate", which is no longer true — a `service`
-  CI job exists since `ef851d6` and the *merge* gate runs that suite since
-  `d18d534`. What both of them run there is two tests, which is the part that
-  still holds the label back (`BACKLOG.md` item 1).
+  lists **six** reasons. *Corrected 2026-08-31 (fourth evaluation):* this line
+  said the largest was that the deployed tree carries **"two tests, both on the
+  PDF stamper"**, and **that is no longer true** — re-run by this seat at
+  `f7c8d03`, the served tree's suite is **21 tests across four files**, two of
+  which drive a real Durable Object (`STAGE.md` §2.1 carries the measurement
+  and the correction). What holds the label back now is different and worse:
+  the coverage that grew went and **found two unfixed defects on the served
+  tree** — envelope transitions that let an executed agreement be voided or
+  declined after the fact, and an `expires_at` the worker never acts on
+  (`STAGE.md` §2.6, `BACKLOG.md` items 1 and 2). Breadth is still missing too
+  (`worker.ts`, R2, mail, feedback, conversion, the OAuth callback), which is
+  `BACKLOG.md` item 3.
 - **Not a QES / eIDAS-qualified signature.** The product produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware the product does not touch. (The landing page states
@@ -150,6 +156,46 @@ At every product evaluation (role duty 4): does the release just shipped
 deliver a claim above, and does any claim now have a live falsifier? A claim
 that acquires one is *demoted in this file in the same commit that finds it* —
 the same rule `STAGE.md` runs on.
+
+**Fourth evaluation, 2026-08-31, against `main` @ `f7c8d03`.**
+**No release note has been published since the last evaluation**, so duty 4's
+release question has nothing to answer and this pass does not invent one. What
+triggered it was duty 1 — two open unlabelled issues — plus two merged coder
+deliveries (`spec/0004` at `3d01198`, `spec/0005` at `f7c8d03`) that changed
+facts this file states.
+
+- **Does either delivery deliver a claim above? No.** Both are test suites over
+  the served tree. C1–C6 are about what the product *does*; a characterization
+  test changes what is *known*, not what is promised. Saying so is the honest
+  answer, and padding it into a claim would be the defect this file warns about
+  two paragraphs down.
+- **Does any claim acquire a live falsifier? No — and one near miss is worth
+  writing down, because the next reader will reach for it.** `spec/0005` found
+  that `cancel` and `decline` can flip a **completed** envelope to `cancelled`
+  or `declined` with no status guard (`durable.ts:1240`, `:1490`). That looks
+  like it should falsify **C1**, and it does not. C1's stated falsifiers are
+  *a completed envelope whose stored PDF has no certificate page*, *a
+  certificate whose printed digest does not match the file*, and *a tier or
+  setting that turns it off*. A status overwrite touches the Durable Object row
+  and the audit log; **the stamped PDF and its certificate in R2 are
+  untouched**, and `stampAndCertifyPdf` still runs unconditionally on the
+  completion path. So C1 stands as written. What the defect damages is the
+  *record around* the artifact — the row and the audit trail come to contradict
+  the certificate — which `STAGE.md` §2.6 carries and `BACKLOG.md` item 1
+  fixes. **C1 is not weakened here and it is not quietly widened either.**
+- **One claim this file still does not make, and this evaluation is the second
+  to note it.** Nothing in C1–C6 promises that a deadline a sender sets is
+  honoured, which is why `BACKLOG.md` item 2 — the SPA telling senders
+  *"Without an expiration date, the envelope stays open until completed or
+  voided."* while the worker has no scheduled handler at all — falsifies no
+  claim here while being a real broken promise. That is the same coverage gap
+  the third evaluation found with #7 and the sign-in path: **this file's claims
+  are about what the product does once you are inside it, and the promises it
+  makes *around* the signing act are unclaimed.** Left as a standing
+  observation for whoever next writes a claim, rather than a claim invented to
+  fit a defect already found.
+
+---
 
 **Third evaluation, 2026-08-31, against `main` @ `d18d534` and the live host.**
 Release checked: [`2026-08-31-pumasi-sign-sign-in-again.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-08-31-pumasi-sign-sign-in-again.md)
