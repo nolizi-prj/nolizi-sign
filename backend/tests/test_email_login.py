@@ -58,7 +58,7 @@ def email_client(make_client: Callable[[Settings | None], TestClient]) -> TestCl
 
 
 def test_request_sends_link_to_allowed_domain(email_client: TestClient, sent_mails: list[dict[str, object]]) -> None:
-    response = email_client.post("/api/auth/email/request", json={"email": "User@Pumasi.com", "next": "/send/3"})
+    response = email_client.post("/api/auth/email/request", json={"email": "User@Pumasi.ai", "next": "/send/3"})
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}

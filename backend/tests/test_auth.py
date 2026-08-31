@@ -122,7 +122,7 @@ def test_upsert_user_from_claims_creates_user(db: Session) -> None:
     settings = _settings(ms_tenant_id="tenant-123")
     claims = {
         "tid": "tenant-123",
-        "preferred_username": "New.User@Pumasi.com",
+        "preferred_username": "New.User@Pumasi.ai",
         "name": "New User",
         "oid": "oid-abc",
     }
@@ -184,7 +184,7 @@ def test_allowed_email_domains_defaults_to_pumasi() -> None:
 
 
 def test_allowed_email_domains_list_parses_and_normalizes() -> None:
-    settings = Settings(allowed_email_domains=" Pumasi.com , example.org ,")
+    settings = Settings(allowed_email_domains=" Pumasi.ai , example.org ,")
 
     assert settings.allowed_email_domains_list == ["pumasi.ai", "example.org"]
 

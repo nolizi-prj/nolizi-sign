@@ -81,7 +81,7 @@ def test_create_user_provisions_by_email(admin_client: TestClient) -> None:
 
 
 def test_create_user_normalizes_email(admin_client: TestClient) -> None:
-    resp = admin_client.post("/api/users", json={"email": "  Jane.Doe@Pumasi.com "})
+    resp = admin_client.post("/api/users", json={"email": "  Jane.Doe@Pumasi.ai "})
 
     assert resp.status_code == 201, resp.text
     assert resp.json()["email"] == "jane.doe@pumasi.ai"
