@@ -164,3 +164,38 @@ packet left (b) alone, not to pin the steward's answer.
 **Where each runs.** A-001 – A-005 are `vitest` (`frontend` CI job, and the
 local gate). A-006 is Playwright (`e2e` CI job). No suite here runs the
 deployed tree — `service/` has no CI job at all, which is Q-018 and item 2.
+
+---
+
+## Amendment log
+
+Three amendments, all in the open. The third was taken in the wrong order and
+that is recorded here rather than tidied away.
+
+| # | What | When | Spec review |
+| :-- | :--- | :--- | :--- |
+| 1 | `A-004` → `A-005` in §S3 and `INTENT.md` — a stale cross-reference the first spec review cited (L-007 in miniature) | `e31d29c`, before implementation | [`reviews/20260831-113534-spec-gemini.md`](../../reviews/20260831-113534-spec-gemini.md) |
+| 2 | §S4 widened from one uncited row to both, and §S2e's scoping given its reason | `e31d29c`, before implementation | same |
+| 3 | **§S2a**: A-003's and A-006's haystack narrowed from `MARKET.md` whole to its pricing table rows, because the whole-file form could not fail | `e57bbe0`, **during implementation** | taken after the fact — see below |
+
+**On the third: CHARTER Part 3 requirement 2 was passed through, and the
+code review caught it.** The rule is amend the spec in the open, take a fresh
+cross-family spec review, *then* build. The defect was found by running the
+frozen case against the change-absent tree — which happens during
+implementation — and the amendment was folded into the same commit as the
+build instead of being split out and re-reviewed first. Gemini objected on
+exactly this ground (`reviews/20260831-114257-code-gemini.md`, citing Part 3
+requirement 2). The objection is correct and was not argued past: the missing
+spec review was taken on the amended spec before the code review was
+re-taken, so the standard is reviewed by another family before it gates
+anything.
+
+Recorded in one line, per CHARTER Part 0 (this product's `roadmap/STAGE.md`
+reads `alpha`, so process requirements guide rather than block): **the
+ordering of amendment 3 did not meet Part 3 requirement 2; the review it
+owed was taken late rather than skipped.**
+
+The substance is unchanged either way — the amendment made a frozen case
+*able to fail*, which is the direction that cannot lower the bar, and the
+evidence is in the commit: A-003 stayed green against `d797c81` before it and
+goes red after.
