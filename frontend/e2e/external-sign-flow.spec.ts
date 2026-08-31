@@ -67,7 +67,7 @@ test("external signer verifies by code and signs", async ({ browser }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + 160, box.y + 70, { steps: 10 });
   await page.mouse.up();
-  await page.getByRole("dialog").getByRole("button", { name: /Save|Adopt/i }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /Adopt/i }).click();
 
   await page.getByRole("button", { name: "Finish" }).click();
   await page.getByLabel(/legally binding/i).check({ force: true });

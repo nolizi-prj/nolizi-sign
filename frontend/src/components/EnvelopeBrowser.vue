@@ -208,6 +208,8 @@ function formatAuditLabel(evt: AuditEventType): string {
     case "created": return "Created draft";
     case "sent": return "Sent envelope";
     case "opened": return "Viewed document";
+    case "signed": return "Signed";
+    case "completed": return "Completed";
     case "reminded": return "Sent reminder";
     case "cancelled": return "Voided envelope";
     case "declined": return "Declined to sign";

@@ -33,7 +33,9 @@ const isDragging = ref(false);
 const heroFileInputRef = ref<HTMLInputElement | null>(null);
 
 function preventWindowDrop(e: DragEvent): void {
-  e.preventDefault();
+  if (e.dataTransfer?.types?.includes("Files")) {
+    e.preventDefault();
+  }
 }
 
 function onHeroFileDrop(e: DragEvent): void {

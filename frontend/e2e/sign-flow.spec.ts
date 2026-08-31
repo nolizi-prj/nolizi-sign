@@ -184,7 +184,7 @@ test("admin builds a template, sends it, both signers sign, and the completed PD
 
     await page.getByRole("button", { name: "Click to sign" }).click();
     await drawSignature(page);
-    await page.getByRole("dialog").getByRole("button", { name: /Save|Adopt/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /Adopt/i }).click();
 
     // Finish opens the review-and-consent dialog; completion requires the
     // explicit e-signature consent checkbox.

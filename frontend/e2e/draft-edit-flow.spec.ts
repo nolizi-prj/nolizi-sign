@@ -158,7 +158,7 @@ test("draft can be edited in the wizard and then sent", async ({ browser }) => {
 
     await admin.getByRole("button", { name: "Click to sign" }).click();
     await drawSignature(admin);
-    await admin.getByRole("dialog").getByRole("button", { name: /Save|Adopt/i }).click();
+    await admin.getByRole("dialog").getByRole("button", { name: /Adopt/i }).click();
     // The signature dialog's closing overlay can still cover the page for a
     // beat (CI hit this): wait it out, then check WITHOUT force so Playwright
     // waits until the input actually receives the click — a forced click can

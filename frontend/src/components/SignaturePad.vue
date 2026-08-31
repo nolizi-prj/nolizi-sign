@@ -107,7 +107,7 @@ function clearDraw(): void {
   pad?.clear();
 }
 
-async function renderTyped(): Promise<void> {
+async function renderTyped(exportMode = false): Promise<void> {
   const canvas = typeCanvasRef.value;
   if (!canvas || canvas.offsetWidth === 0 || canvas.offsetHeight === 0) return;
   if ("fonts" in document) {
@@ -122,10 +122,13 @@ async function renderTyped(): Promise<void> {
   if (!ctx) return;
   ctx.scale(ratio, ratio);
   ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+  const text = typedName.value.trim();
+  // In export mode (save), never render placeholder — a blank canvas is caught by the caller.
+  if (!text && exportMode) return;
   ctx.font = `${currentFont.value.fontSize} ${currentFont.value.fontFamily}`;
   ctx.fillStyle = inkColor.value;
   ctx.textBaseline = "middle";
-  ctx.fillText(typedName.value || (isInitials.value ? "AB" : "Adopt Signature"), 16, canvas.offsetHeight / 2);
+  ctx.fillText(text || (isInitials.value ? "AB" : "Adopt Signature"), 16, canvas.offsetHeight / 2);
 }
 
 watch([typedName, selectedFontId], () => {
@@ -216,7 +219,7 @@ function useSaved(): void {
   emit("update:modelValue", false);
 }
 
-function save(): void {
+async function save(): Promise<void> {
   errorMessage.value = null;
   if (tab.value === "draw") {
     if (!pad || pad.isEmpty()) {
@@ -236,7 +239,7 @@ function save(): void {
       errorMessage.value = isInitials.value ? "Please type your initials first." : "Please type your name first.";
       return;
     }
-    renderTyped();
+    await renderTyped(true);
     const dataUrl = typeCanvasRef.value?.toDataURL("image/png");
     if (!dataUrl) {
       errorMessage.value = "Couldn't render the signature. Please try again.";
@@ -392,7 +395,7 @@ onBeforeUnmount(() => {
       <v-card-actions class="pa-4 pt-1">
         <v-spacer />
         <v-btn variant="text" @click="cancel">Cancel</v-btn>
-        <v-btn v-if="step === 'capture'" color="primary" variant="flat" aria-label="Save" @click="save">Adopt &amp; Sign</v-btn>
+        <v-btn v-if="step === 'capture'" color="primary" variant="flat" @click="save">Adopt &amp; Sign</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
