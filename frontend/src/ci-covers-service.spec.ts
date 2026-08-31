@@ -38,6 +38,29 @@ const repoRoot = path.resolve(here, "..", "..");
 const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
 
 const CI_YAML = read(".github/workflows/ci.yaml");
+
+/**
+ * ci.yaml with its whole-line `#` comments removed.
+ *
+ * AMENDMENT 1 (spec/0002). Without this the cases below matched the
+ * workflow's PROSE as if it were its configuration: a comment explaining why
+ * the build step must precede `npm test` contains the string "npm test", so
+ * the step carrying that comment was read as the suite step and A-102
+ * compared the wrong pair. A comment quoting `vue-tsc --noEmit` in order to
+ * say it is broken did the same to A-106 — the identical shape to spec/0001
+ * A-003, where MARKET.md quoted a false price in order to refute it.
+ *
+ * A case that can be flipped by a sentence nobody executes is not measuring
+ * the file. Whole lines only: `#` inside a shell `run:` is a legitimate
+ * character and is deliberately left alone.
+ */
+const withoutComments = (yaml: string) =>
+  yaml
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+
+const CI_YAML_CONFIG = withoutComments(CI_YAML);
 const CLAUDE_MD = read("CLAUDE.md");
 const SERVICE_PKG = JSON.parse(read("service/package.json")) as {
   scripts: Record<string, string>;
@@ -88,8 +111,13 @@ function stepsOf(job: string): string[] {
 const JOBS = jobBlocks(CI_YAML);
 const SERVICE_JOB_STEPS = stepsOf(JOBS.get("service") ?? "");
 
-/** A step that runs in `service/`. */
-const inService = (step: string) => / {6}working-directory: service\s*$/m.test(step);
+/** A step that runs in `service/`. Comments stripped — see AMENDMENT 1. */
+const inService = (step: string) =>
+  / {6}working-directory: service\s*$/m.test(withoutComments(step));
+
+/** Does a step's configuration (not its comments) run this command? */
+const stepRuns = (step: string, command: RegExp) =>
+  command.test(withoutComments(step));
 
 /** Index of the first step matching a predicate, or -1. */
 const firstStep = (steps: string[], p: (s: string) => boolean) => steps.findIndex(p);
@@ -120,6 +148,14 @@ describe("A-100 · the reader used by the cases below actually reads", () => {
     );
   });
 
+  it("reads configuration rather than comments (AMENDMENT 1)", () => {
+    // Turns red if comment-stripping stops working, which is what made A-102
+    // and A-106 compare the wrong things before the amendment.
+    expect(withoutComments("  # npm test\n  run: npm ci\n")).not.toContain("npm test");
+    expect(withoutComments("  run: npm ci\n")).toContain("npm ci");
+    expect(CI_YAML_CONFIG.length).toBeGreaterThan(0);
+  });
+
   it("splits a known job into its steps", () => {
     const frontend = stepsOf(JOBS.get("frontend") ?? "");
     expect(frontend.length).toBeGreaterThanOrEqual(4);
@@ -136,7 +172,7 @@ describe("A-101 · CI runs the tree that serves sign.pumasi.ai (S1a)", () => {
     expect(SERVICE_JOB_STEPS.length).toBeGreaterThanOrEqual(4);
     const suite = firstStep(
       SERVICE_JOB_STEPS,
-      (s) => inService(s) && /\bnpm test\b/.test(s),
+      (s) => inService(s) && stepRuns(s, /\bnpm test\b/),
     );
     expect(suite).toBeGreaterThanOrEqual(0);
   });
@@ -148,11 +184,11 @@ describe("A-102 · that job builds before it runs (S1b)", () => {
   it("runs `npm run build` in service/ before the suite step", () => {
     const build = firstStep(
       SERVICE_JOB_STEPS,
-      (s) => inService(s) && /npm run build/.test(s),
+      (s) => inService(s) && stepRuns(s, /npm run build/),
     );
     const suite = firstStep(
       SERVICE_JOB_STEPS,
-      (s) => inService(s) && /\bnpm test\b/.test(s),
+      (s) => inService(s) && stepRuns(s, /\bnpm test\b/),
     );
     expect(build).toBeGreaterThanOrEqual(0);
     expect(suite).toBeGreaterThanOrEqual(0);
@@ -249,10 +285,10 @@ describe("A-105 · the job invokes that guard, after the suite (S1c)", () => {
   it("calls assert-service-suite-ran.sh after running the suite", () => {
     const suite = firstStep(
       SERVICE_JOB_STEPS,
-      (s) => inService(s) && /\bnpm test\b/.test(s),
+      (s) => inService(s) && stepRuns(s, /\bnpm test\b/),
     );
     const assertion = firstStep(SERVICE_JOB_STEPS, (s) =>
-      s.includes("assert-service-suite-ran.sh"),
+      stepRuns(s, /assert-service-suite-ran\.sh/),
     );
     expect(assertion).toBeGreaterThanOrEqual(0);
     expect(assertion).toBeGreaterThan(suite);
@@ -272,7 +308,7 @@ describe("A-106 · ci.yaml's type-check is able to fail (S2a)", () => {
   // -b there is no program to check.
   // Mutation: restore `npx vue-tsc --noEmit`.
   it("never invokes vue-tsc without -b", () => {
-    const lines = CI_YAML.split("\n").filter((l) => l.includes("vue-tsc"));
+    const lines = CI_YAML_CONFIG.split("\n").filter((l) => l.includes("vue-tsc"));
     expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) expect(line).toMatch(/\s-b\b/);
   });

@@ -230,3 +230,46 @@ until it has been run against the tree it exists to reject.
 | A-107 | **red** (3 of 3) | green in 1 of 3 before the hole above was closed |
 | A-108 | **red** | |
 | A-109 | green | correctly — a preservation invariant; see above |
+
+---
+
+## Amendment log
+
+One amendment, taken **in the open and in the right order**: amended, given a
+fresh cross-family spec review, and only then built against. The first code
+review OBJECTED on both `0023` and `0026` today citing CHARTER Part 3
+requirement 2 — an amendment folded into the implementation commit instead —
+so the ordering here is deliberate, and the amendment sits in its own commit
+with no implementation in it.
+
+| # | What | When | Spec review |
+| :-- | :--- | :--- | :--- |
+| 1 | **A-102, A-105 and A-106 read the workflow's comments as if they were its configuration.** The cases now strip whole-line `#` comments before matching. | before implementation was committed | see the `Reviewed-By:` trailer on the amendment commit |
+
+**Why it was needed, and how it was found.** The `service` job's comments
+explain *why* the build step must precede `npm test` — so they contain the
+string `npm test`. Step chunks carry their trailing comments, so the
+`npm ci` step was read as the suite step and A-102 compared the wrong pair.
+A-106 had the same defect from the other direction: a comment quoting
+`vue-tsc --noEmit` **in order to say that it is broken** made the case red on
+a file that no longer runs it.
+
+That is precisely `spec/0001` A-003's shape, where `MARKET.md` quoted a false
+price in order to refute it and a whole-file search reported the wrong table
+as backed. **The same defect has now appeared in two consecutive specs in
+this repository**: a case that searches a text for a string it also uses to
+*talk about* that string. It is recorded here as a pattern rather than as an
+incident.
+
+Found the same way, too: by running the frozen cases against the tree and
+reading which ones were green, rather than assuming the reds would land where
+intended. A case that can be flipped by a sentence nobody executes is not
+measuring the file.
+
+**Direction of the amendment.** It makes three cases *more* able to fail and
+none of them easier to pass — comments can no longer satisfy an assertion,
+and A-100 gains a guard that goes red if the stripping stops working. That is
+the direction that cannot lower a frozen bar. Whole lines only: `#` inside a
+shell `run:` block is a legitimate character and is deliberately left alone;
+a trailing comment on a `run:` line could still be read as configuration, and
+that limit is stated rather than papered over.
