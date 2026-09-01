@@ -52,8 +52,11 @@ export async function submitFeedbackToGitHub(
   const repo = env.GITHUB_FEEDBACK_REPO || 'pumasi-ai/pumasi-sign';
 
   if (!token) {
-    console.log('[Feedback] Received feedback (no GitHub token configured):', submission.message);
-    return { ok: true, message: 'Feedback recorded locally.' };
+    // Fail loudly: claiming success here silently discarded every submission
+    // until GITHUB_FEEDBACK_TOKEN was first provisioned (2026-08-30). The
+    // console.log is not storage — the user must see that nothing was kept.
+    console.error('[Feedback] Dropped — GITHUB_FEEDBACK_TOKEN is not configured:', submission.message);
+    return { ok: false, message: 'Feedback pipeline is not configured — nothing was recorded.' };
   }
 
   let screenshotUrl: string | null = null;
