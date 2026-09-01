@@ -153,9 +153,11 @@ function displayNameForRole(role: string): string {
 }
 
 const stepTitles = computed<string[]>(() =>
-  mode.value === "template"
-    ? ["Document", "Signers & message", "Review & send"]
-    : ["Document", "Signers", "Place fields", "Review & send"],
+  onlySigner.value
+    ? ["Document", "Signer (You)", "Place your fields", "Review & sign"]
+    : mode.value === "template"
+      ? ["Document", "Signers & message", "Review & send"]
+      : ["Document", "Signers", "Place fields", "Review & send"],
 );
 
 const roles = computed<string[]>(() => {
@@ -832,7 +834,10 @@ const draftHandoff = useDraftHandoffStore();
 
 onMounted(async () => {
   await load();
-  if (route.query.self === "1" && !props.draftId && !props.templateId) onlySigner.value = true;
+  if (route.query.self === "1" && !props.draftId && !props.templateId) {
+    onlySigner.value = true;
+    mode.value = "adhoc";
+  }
   if (!props.draftId && !props.templateId) {
     const dropped = draftHandoff.consumeFile();
     if (dropped) {
@@ -860,80 +865,71 @@ async function send(asDraft = false): Promise<void> {
       }));
       const { data } = await http.post<SubmissionOut>("/submissions", {
         template_id: selectedTemplate.value.id,
-        title: title.value.trim(),
-        message: message.value.trim() || null,
+        title: title.value.trim() || selectedTemplate.value.name,
+        message: message.value.trim() || undefined,
+        role_assignments: roleAssignments.value,
         expires_at: expiresAtIso(),
         reminders_enabled: remindersEnabled.value,
-        reminder_interval_days: reminderInterval.value,
-        draft: asDraft,
-        signers: [
-          ...roles.value.map((role) => ({
-            role,
-            user_id: roleAssignments.value[role],
-            order: toOrder(templateOrderNums.value[role] ?? 1),
-          })),
-          ...ccEntries,
-        ],
+        reminder_interval_days: remindersEnabled.value ? reminderInterval.value : undefined,
+        cc: ccEntries.length > 0 ? ccEntries : undefined,
       });
       created = data;
-    } else if (mode.value === "adhoc" && adhocFile.value) {
+    } else {
+      if (!adhocFile.value) {
+        errorMessage.value = "Please choose a document to sign.";
+        return;
+      }
       const ccEntries = ccRows.value.map((row) => ({
         user_id: row.userId,
         order: toOrder(row.orderNum),
         is_cc: true,
       }));
-      const formData = new FormData();
-      formData.append("title", title.value.trim());
-      formData.append(
-        "signers_json",
-        JSON.stringify([
-          ...adhocRecipients.value.map((userId, i) => ({
-            role: adhocRole(i),
+      const submitters = onlySigner.value
+        ? [{ user_id: auth.me?.id ?? null, role: "signer-1", order: 0, is_cc: false }]
+        : adhocRecipients.value.map((userId, i) => ({
             user_id: userId,
+            role: adhocRole(i),
             order: toOrder(adhocOrderNums.value[i] ?? 1),
-          })),
-          ...ccEntries,
-        ]),
-      );
-      formData.append("fields_json", JSON.stringify(adhocFields.value));
-      if (message.value.trim()) formData.append("message", message.value.trim());
-      const expiresAt = expiresAtIso();
-      if (expiresAt) formData.append("expires_at", expiresAt);
-      formData.append("reminders_enabled", String(remindersEnabled.value));
-      formData.append("reminder_interval_days", String(reminderInterval.value));
-      if (asDraft) formData.append("draft", "true");
-      formData.append("file", adhocFile.value);
-      const { data } = await http.post<SubmissionOut>("/submissions/adhoc", formData);
+            is_cc: false,
+          }));
+
+      const form = new FormData();
+      form.append("file", adhocFile.value);
+      form.append("title", title.value.trim() || adhocFile.value.name.replace(/\.pdf$/i, ""));
+      if (message.value.trim()) form.append("message", message.value.trim());
+      form.append("submitters", JSON.stringify([...submitters, ...ccEntries]));
+      form.append("fields", JSON.stringify(adhocFields.value));
+      const exp = expiresAtIso();
+      if (exp) form.append("expires_at", exp);
+      form.append("reminders_enabled", String(remindersEnabled.value));
+      if (remindersEnabled.value) {
+        form.append("reminder_interval_days", String(reminderInterval.value));
+      }
+
+      const { data } = await http.post<SubmissionOut>("/submissions/adhoc", form);
       created = data;
-    } else {
-      return;
     }
-    // Recreate-on-save: the freshly created envelope supersedes the draft we
-    // loaded from. Delete it only after the create succeeded; if the delete
-    // fails the leftover draft is harmless and user-deletable.
-    if (draftSourceId.value !== null) {
+
+    if (draftSourceId.value != null) {
       await http.delete(`/submissions/${draftSourceId.value}`).catch(() => {});
       draftSourceId.value = null;
     }
+
     if (asDraft) {
-      ui.toast("Draft saved — send it whenever you're ready.");
+      ui.toast("Draft saved.");
+      await router.push({ name: "dashboard" });
     } else if (onlySigner.value && mode.value === "adhoc" && created.my_submitter_id != null) {
-      // Self-sign: no reason to make the sender find their own email.
-      ui.toast("Document ready — sign it now.");
-      await router.push({ name: "sign", params: { submitterId: String(created.my_submitter_id) } });
-      return;
+      ui.toast("Document prepared! Continue below to sign and seal your document.");
+      void router.push({ name: "sign", params: { submitterId: String(created.my_submitter_id) } });
     } else {
-      ui.toast(
-        signInOrder.value
-          ? "Envelope sent — the first signer has been emailed; the rest follow in order."
-          : "Envelope sent — signers have been emailed.",
-      );
+      ui.toast("Envelope sent for signature!");
+      await router.push({ name: "dashboard" });
     }
-    await router.push({ name: "envelope-detail", params: { id: String(created.id) } });
   } catch (err) {
     errorMessage.value = extractError(err);
   } finally {
-    (asDraft ? savingDraft : submitting).value = false;
+    submitting.value = false;
+    savingDraft.value = false;
   }
 }
 </script>
@@ -941,7 +937,7 @@ async function send(asDraft = false): Promise<void> {
 <template>
   <v-container class="send-view">
     <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-2 px-0" :to="{ name: 'dashboard' }">Home</v-btn>
-    <h1 class="text-h5 mb-4">Send for signature</h1>
+    <h1 class="text-h5 mb-4">{{ onlySigner ? "Sign a document" : "Send for signature" }}</h1>
 
     <v-alert v-if="!auth.canSend && !loading" type="error">You don't have permission to send documents.</v-alert>
 
