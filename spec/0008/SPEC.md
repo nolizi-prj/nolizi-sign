@@ -3,7 +3,7 @@
 **Intent:** [`INTENT.md`](INTENT.md) · window `pumasi/DECISIONS.md` Q-037.
 **Takes:** `roadmap/BACKLOG.md` item **1** at `3edd06f`, in full, and nothing
 else in that file.
-**Measured at** `3edd06f`, by the coder seat of job `0073`, 2026-09-01 UTC.
+**Measured at** `3edd06f`, by the coder seat of job `0074`, 2026-09-01 UTC.
 `main` was `3edd06f` at the lock and did not move under this seat; every line
 number below was read at that SHA and re-read after the edit.
 
@@ -305,3 +305,22 @@ Q-035 honoured it: **the spec reviewer and the code reviewer share no family,
 and neither is the builder** (`claude`). Recruitment order is the packet's —
 Claude → Gemini → Grok → Qwen → GLM → Kimi — with the builder and the
 unreachable family skipped in place.
+
+---
+
+## S11 · One correction to this spec's own record
+
+**This is job `0074`, not `0073`.** The packet is
+`pumasi-ops/jobs/proposed/0074-coder-sign-the-settings-dialog-deletes-the-senders-message-and-reports-success.md`;
+`0073` is a `pumasi-tunnel` product-manager packet. The wrong number was read
+from the trailing digits of the previous coder job (`0072`) rather than from
+the queue, and it is fixed above.
+
+**Two published records still carry the wrong number and are deliberately not
+rewritten**: this repository's commit `9659e69`, and `pumasi` `df8f0d0`
+(release note commit) with `DECISIONS.md` **Q-037**. Q-037 is corrected by a
+follow-up entry line rather than by an edit to what was published under it —
+a published record is a dated record, and correcting one in place is how it
+stops being one (the rider `pumasi/DECISIONS.md` Q-034's default states for
+release notes, applied here to a commit message). Both commit messages are
+otherwise accurate.

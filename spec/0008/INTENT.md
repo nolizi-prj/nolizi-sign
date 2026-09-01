@@ -1,6 +1,6 @@
 # INTENT — spec/0008 · The message you wrote to your signers stays written
 
-**Written 2026-09-01 (UTC) by the coder seat of job `0073`, before the spec.**
+**Written 2026-09-01 (UTC) by the coder seat of job `0074`, before the spec.**
 Charter §2.1: one page, plain language, no clause numbers, no test IDs.
 Its 24-hour window is `pumasi/DECISIONS.md` Q-037.
 
