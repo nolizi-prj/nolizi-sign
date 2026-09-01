@@ -240,8 +240,11 @@ qwen's, from the first spec review of this document
 (`reviews/20260831-231324-spec-qwen.md`), which objected to an earlier draft
 that overclaimed here.** That draft said (2) *"now catches a deletion whatever
 anything is called"*. **That was false and is withdrawn.** The floor is `>= 2`;
-`service/src/test/` holds seven files today, so deleting an unlisted third file
-leaves five and the case stays green. What (2) does guarantee is narrower and
+`service/src/test/` holds **seven** files today, so deleting an unlisted one
+leaves six and the case stays green — indeed **five of the seven could go**,
+provided the two it names remain. (The arithmetic in this sentence was wrong in
+the version committed at `af617e1` — it said "leaves five" — and is corrected
+here on `reviews/20260901-002535-code-glm.md`'s §E nit.) What (2) does guarantee is narrower and
 is the whole of it: **the directory can never be emptied or reduced below the
 two files this case froze, whatever the survivors are called** — so a packet
 that satisfies A-109 by deleting its filename list along with the files it

@@ -374,8 +374,9 @@ describe("A-109 · nothing is bought by deletion (S4)", () => {
   //
   // WHAT THE FLOOR IS AND IS NOT, because a spec reviewer objected to a draft
   // that overclaimed it (reviews/20260831-231324-spec-qwen.md). It is `>= 2`.
-  // It does NOT notice an unlisted third file being deleted — seven files
-  // exist today and five would still pass. It holds exactly one thing: this
+  // It does NOT notice an unlisted file being deleted: seven exist today,
+  // deleting one leaves six, and five of the seven could go before this
+  // assertion noticed anything. It holds exactly one thing: this
   // directory cannot be emptied or cut below the two files this case froze,
   // WHATEVER the survivors are called, so a packet that satisfies A-109 by
   // deleting its filename list along with the files it names still fails.

@@ -319,9 +319,9 @@ nothing was removed, and the new clause can only add a way to go red.
 is stated because the first spec review of spec/0009 objected to a draft that
 overclaimed it** (`reviews/20260831-231324-spec-qwen.md`, qwen, cited and
 correct). The floor is `>= 2`, a **count**, so: it cannot tell a real test file
-from an empty one, and it does **not** catch the deletion of an unlisted third
-file while the two named files remain — seven files exist today and five would
-still pass. Withdrawn as false: the claim that it catches *"a deletion whatever
+from an empty one, and it does **not** catch the deletion of an unlisted file
+while the two named files remain — seven exist today, deleting one leaves six,
+and five of the seven could go before the floor noticed anything. Withdrawn as false: the claim that it catches *"a deletion whatever
 anything is called"*. What it does hold is narrower and is the hole the rename
 walked through: **the directory can never be emptied or reduced below the two
 files this case froze, whatever the survivors are called**, so a packet that
