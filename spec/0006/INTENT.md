@@ -2,7 +2,7 @@
 
 **Written 2026-08-31 by the coder seat of job `0058`, before the spec.**
 Charter §2.1: one page, plain language, no clause numbers, no test IDs.
-Its 24-hour window is `pumasi/DECISIONS.md` Q-030.
+Its 24-hour window is `pumasi/DECISIONS.md` Q-031.
 
 ## What we understood you to want
 

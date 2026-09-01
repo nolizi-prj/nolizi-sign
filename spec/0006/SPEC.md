@@ -1,6 +1,6 @@
 # SPEC 0006 — Three transitions stop overwriting a finished envelope
 
-**Intent:** [`INTENT.md`](INTENT.md) · window `pumasi/DECISIONS.md` Q-030.
+**Intent:** [`INTENT.md`](INTENT.md) · window `pumasi/DECISIONS.md` Q-031.
 **Takes:** `roadmap/BACKLOG.md` item **1** in full, and nothing else in that file.
 **Amends:** `spec/0005` §S6.1, §S6.2 and §S6.4 — from *proposed* to *taken* —
 and three of the four cases `spec/0005` §S4a marked RECORDED, NOT ENDORSED.
@@ -161,6 +161,42 @@ first**, and this one did not — it said amend in the same commit as the repair
 which is the ordering the charter's Part 3 spends a paragraph forbidding. That
 is handed up in this job's return block as a packet defect, not a reviewer
 error. At `launched` this run would have stopped here.
+
+**S4-Q030. While this packet ran, the commons raised the very question these
+objections turn on — and its named default is the route this section took.**
+`pumasi/DECISIONS.md` **Q-030**, *"May a builder use CHARTER §3 requirement 2's
+own remedy to amend a frozen acceptance case?"*, was committed to `pumasi` at
+`7a0892d`, 2026-08-31 18:57 CDT — while this work was in review — raised from
+`pumasi-tunnel` job `0059` out of job `0047` meeting the same clause. It is
+**open**, it is the steward's, and nothing here closes, dates or softens it.
+
+Its **default on silence** is that requirement 2's remedy **is** available to
+the builder, on the conditions the clause states: amend the spec **in the
+open** — a numbered amendment saying what changed and why, never a silent edit
+— and take a **fresh cross-family spec review** before building against it.
+That is what §S4-review records having done, in that form, with the ordering
+deviation named rather than hidden.
+
+Its two riders, checked against this change rather than assumed:
+
+- **(a) "The freeze protects assertions, not fixtures."** This amendment is the
+  *harder* kind and says so: it changes what A-404, A-406 and A-407 **assert**,
+  not how they are set up. Under rider (a) that is a change to the standard and
+  a reviewer must weigh it as one. `reviews/20260831-183823-spec-gemini.md` did
+  weigh it as one — it records the cases moving *"from defect characterization
+  (`RECORDED, NOT ENDORSED` in `spec/0005`) to active guard enforcement"* — and
+  approved. §S4's table exists so that weighing is possible at all.
+- **(b) "The spec reviewer of the amendment must not be the code reviewer of
+  the change that follows, where three or more families are available."**
+  Satisfied, and not by accident: the amendment's spec review is **gemini**
+  (`reviews/20260831-183823-spec-gemini.md`, APPROVE) and the code review is
+  **kimi** (`reviews/20260831-185008-code-kimi.md`, APPROVE). Different
+  families, and `tools/families.sh` reported 5 of 6 available on the day.
+
+**This is a second instance for that entry and it differs from the first in the
+way that matters**: `pumasi-tunnel`'s A-10 was a *fixture* amendment, rider
+(a)'s easy case; this one changes assertions. Handed up as evidence, not as an
+answer.
 
 **S4-charter. There are TWO charter files on this machine, they disagree about
 exactly this clause, and that — not a disagreement about the code — is what
