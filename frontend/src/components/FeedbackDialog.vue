@@ -9,6 +9,7 @@ import { useRoute } from "vue-router";
 import html2canvas from "html2canvas";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
+import { useBrandingStore } from "../store/branding";
 import http, { extractError } from "../utils/http";
 
 interface ErrorItem {
@@ -22,16 +23,15 @@ interface ErrorItem {
 const props = withDefaults(
   defineProps<{
     showFloating?: boolean;
-    showNavbarBtn?: boolean;
   }>(),
   {
     showFloating: true,
-    showNavbarBtn: true,
   }
 );
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const branding = useBrandingStore();
 const route = useRoute();
 
 const open = ref(false);
@@ -278,18 +278,6 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <!-- Optional Top Navbar Trigger Button -->
-  <v-btn
-    v-if="showNavbarBtn"
-    variant="text"
-    prepend-icon="mdi-message-alert-outline"
-    :loading="opening"
-    class="mr-1"
-    @click="openFeedback"
-  >
-    Feedback
-  </v-btn>
-
   <!-- Persistent Floating Screen Action Button (Bottom Right) -->
   <div v-if="showFloating" class="pf-floating-wrap">
     <button
@@ -297,6 +285,7 @@ async function submit(): Promise<void> {
       class="pf-floating-btn"
       aria-label="Send Feedback"
       title="Send Feedback or Report an Issue"
+      :style="{ backgroundColor: branding.primaryColor || '#1A56DB' }"
       @click="openFeedback"
     >
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pf-btn-icon">

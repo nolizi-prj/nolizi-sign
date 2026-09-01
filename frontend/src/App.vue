@@ -34,7 +34,6 @@ async function logout(): Promise<void> {
         </router-link>
       </v-app-bar-title>
       <v-spacer />
-      <FeedbackDialog />
       <template v-if="auth.me">
         <v-btn v-if="auth.canSend" variant="text" prepend-icon="mdi-send" :to="{ name: 'send' }">
           Send
@@ -66,6 +65,7 @@ async function logout(): Promise<void> {
     <v-main>
       <router-view />
     </v-main>
+    <FeedbackDialog />
     <v-snackbar v-model="ui.toastOpen" :color="ui.toastColor" :timeout="3500" location="bottom">
       {{ ui.toastMessage }}
     </v-snackbar>
