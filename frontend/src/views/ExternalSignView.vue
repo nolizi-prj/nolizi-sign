@@ -24,11 +24,16 @@ const sending = ref(false);
 const verifying = ref(false);
 const submitterId = ref<number | null>(null);
 
-const CLOSED_MESSAGES: Record<string, string> = {
+// Keyed on the union rather than on `string` so that vue-tsc is the test: a
+// status the worker learns to send without a message here becomes a type
+// error instead of a blank card. spec/0007 §S3e.
+const CLOSED_MESSAGES: Record<SignTokenViewOut["status"], string> = {
+  open: "This envelope is waiting for your signature.",
   already_signed: "You've already signed this document.",
   completed: "Everyone has signed — this envelope is complete.",
   cancelled: "This envelope was voided by the sender.",
   declined: "This envelope was declined and is no longer active.",
+  expired: "This envelope reached its expiration date and can no longer be signed.",
 };
 
 // Signed/completed envelopes still allow the code round-trip so a signer can

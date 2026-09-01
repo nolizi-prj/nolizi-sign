@@ -214,7 +214,7 @@ export interface SignerViewOut {
 
 /** Response shape for GET /api/sign/token/{accessUid}. */
 export interface SignTokenViewOut {
-  status: "open" | "already_signed" | "completed" | "cancelled" | "declined";
+  status: "open" | "already_signed" | "completed" | "cancelled" | "declined" | "expired";
   title: string;
   sender_name: string;
   masked_email: string;

@@ -14,6 +14,12 @@
     "run_worker_first": ["/api/*"]
   },
   "routes": [{ "pattern": "sign.pumasi.ai", "custom_domain": true }],
+  // The expiry sweep — src/worker.ts's `scheduled()` export. Hourly, because
+  // this interval IS the length of time during which the Send wizard's
+  // "the envelope stays open until completed or voided" is false for an
+  // envelope that has a deadline. spec/0007 §S0.1. NOTE: no test asserts that
+  // Cloudflare fires this; it is configuration, read by wrangler and by you.
+  "triggers": { "crons": ["0 * * * *"] },
   "r2_buckets": [
     { "binding": "DOCUMENTS", "bucket_name": "pumasi-sign-documents" }
   ],

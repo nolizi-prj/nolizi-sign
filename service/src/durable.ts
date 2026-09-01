@@ -101,13 +101,18 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array | null => {
 const outSubmitterStatus = (s: string): string => (s === 'signed' ? 'completed' : s);
 
 /**
- * The three statuses an envelope never leaves: it has been executed, refused
- * or voided, and every later write is destroying a record rather than making
- * one. `draft` and `pending` are the only statuses a transition may move.
- * spec/0006 §S2.
+ * The four statuses an envelope never leaves: it has been executed, refused,
+ * voided, or its deadline passed — and every later write is destroying a
+ * record rather than making one. `draft` and `pending` are the only statuses a
+ * transition may move. spec/0006 §S2; `expired` added by spec/0007 §S0.4.
+ *
+ * `expired` belongs here for the same reason as the other three and it is not
+ * a fifth kind of thing: no further transition improves the record. A sender
+ * whose envelope lapsed is not stuck — `POST /{id}/copy` (:1269) makes a fresh
+ * draft and clears its deadline (:1278).
  */
 const isTerminal = (status: unknown): boolean =>
-  status === 'completed' || status === 'declined' || status === 'cancelled';
+  status === 'completed' || status === 'declined' || status === 'cancelled' || status === 'expired';
 
 interface UserRow {
   id: string;
@@ -660,6 +665,64 @@ export class PumasiSignService implements DurableObject {
     }
   }
 
+  /**
+   * Flip every envelope past its deadline to `expired`. Returns how many.
+   *
+   * The SPA asks the sender for the deadline, refuses one in the past, shows
+   * it back, and tells them in words what it means. This is the only thing in
+   * the product that makes any of that true. spec/0007 §S2d.
+   *
+   * Four decisions live in the statement below:
+   *
+   * - `status = 'pending'` ONLY. A draft was never sent to anybody; expiring
+   *   one takes a document away from a sender still writing it, and
+   *   EnvelopeDetailView.vue:777 tells that sender to set a new date, advice
+   *   that stays true only if drafts do not expire.
+   * - `LIKE '____-__-__T%'`. `expires_at` is TEXT and the comparison is
+   *   lexicographic, which is exact for the ISO-8601 UTC strings the wizard
+   *   sends (SendView.vue:79). The multipart create path (:1032) stores
+   *   whatever a client sent without validating it, so the shape is pinned
+   *   here: a malformed value is left alone rather than expired on an
+   *   accidental string comparison.
+   * - No LIMIT. A bounded sweep leaves rows unexpired with nothing saying so.
+   *   This is one shard holding the whole product; if that ever stops being
+   *   true the fix is a bound AND a signal, not a bound.
+   * - SELECT then UPDATE, not `UPDATE ... RETURNING`. The rows are needed for
+   *   the audit writes anyway, and this assumes nothing about which SQLite
+   *   version workerd's Durable Object storage exposes.
+   */
+  private sweepExpired(): number {
+    const now = new Date().toISOString();
+    const due = this.all<{ id: string; expires_at: string }>(
+      `SELECT id, expires_at FROM submissions
+        WHERE status = 'pending'
+          AND expires_at IS NOT NULL
+          AND expires_at LIKE '____-__-__T%'
+          AND expires_at < ?`,
+      now,
+    );
+    for (const row of due) {
+      // The UPDATE re-carries the SELECT's own predicate rather than trusting
+      // the row it just read. Recommended at spec review by glm
+      // (reviews/20260831-203202-spec-glm.md §2), which looked for a reachable
+      // interleaving on workerd and could not construct one — input gates make
+      // this sequence atomic on the single object. It is one clause, it costs
+      // nothing, and it means a future caller of sweepExpired() outside a
+      // storage-gated context cannot make this write a lie.
+      this.sql.exec(
+        `UPDATE submissions SET status = 'expired', updated_at = ?
+          WHERE id = ? AND status = 'pending'`,
+        now, row.id,
+      );
+      // The system did this, not the sender: attributing it to a person would
+      // be a false record. Same actor finalize() uses for `completed`.
+      this.audit(row.id, 'expired', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+        expires_at: row.expires_at,
+      });
+    }
+    return due.length;
+  }
+
   /** Find-or-create the account for a verified email, and mint a session cookie header. */
   private establishSession(email: string, name: string, provider: string): { user: UserRow; cookie: string } {
     let user = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, email);
@@ -706,6 +769,16 @@ export class PumasiSignService implements DurableObject {
   }
 
   private async route(req: Request, url: URL, path: string, method: string): Promise<Response> {
+    // ── the hourly expiry sweep ───────────────────────────────────────────
+    //
+    // Reached only from worker.ts's `scheduled()` export, through
+    // `stub.fetch()`. worker.ts refuses this prefix on its own `fetch()`, so
+    // it is not on the public surface — deliberately NOT under /api/, every
+    // path of which is forwarded here. spec/0007 §S2c.
+    if (path === '/__internal/expire' && method === 'POST') {
+      return json({ expired: this.sweepExpired() });
+    }
+
     // ── OAuth sign-in (Google / Microsoft) ────────────────────────────────
     const oauthMatch = path.match(/^\/api\/auth\/oauth\/(google|microsoft)(\/callback)?$/);
     if (oauthMatch && method === 'GET') {
@@ -1205,13 +1278,71 @@ export class PumasiSignService implements DurableObject {
 
       if (method === 'PATCH' && !action) {
         const body: any = await req.json();
+
+        // The "correct expiration & reminders" dialog (EnvelopeDetailView.vue
+        // :428) has always sent these three and this route has always thrown
+        // them away, closing on "Envelope settings updated." having updated
+        // nothing. Harmless while the deadline meant nothing; a trap the
+        // moment spec/0007 makes it binding, because a sender extending a
+        // deadline before it passes is told it worked and the envelope
+        // expires on the old date anyway. spec/0007 §S1d, §S3d.
+        const settings: string[] = [];
+        const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
+        if (has('expires_at')) settings.push('expiration date');
+        if (has('reminders_enabled')) settings.push('reminders');
+        if (has('reminder_interval_days')) settings.push('reminder interval');
+
+        // FIRST statement of the branch, before the title/message write and
+        // before any other read of the body -- so a refused correction writes
+        // nothing and audits nothing, which is the idiom job 0058 established
+        // for every other guard in this file. Moved here from below on kimi's
+        // code review (reviews/20260831-203845-code-kimi.md), which found that
+        // a body carrying BOTH a title and a settings field got a 409 with the
+        // title write already persisted. spec/0007 §S3d.
+        //
+        // A body with no settings field is unaffected: title and message keep
+        // the behaviour they had, on every status, which this spec does not
+        // touch.
+        if (settings.length > 0 && isTerminal(sub.status)) {
+          return json({ error: 'This envelope is already closed' }, 409);
+        }
+
         this.sql.exec(
           `UPDATE submissions SET title = ?, message = ?, updated_at = ? WHERE id = ?`,
           String(body.title ?? sub.title).slice(0, 200),
           body.message != null ? String(body.message).slice(0, 2000) : null,
           now, sub.id,
         );
-        this.audit(sub.id, 'corrected', user.email, user.name);
+
+        if (settings.length > 0) {
+          // Only while it is still live. The pencil that sends these is drawn
+          // for `pending` and `draft` only (EnvelopeDetailView.vue:64), and
+          // reviving a finished envelope by extending its deadline is not a
+          // capability this spec adds — `copy` is the route out.
+          if (has('expires_at')) {
+            this.sql.exec(
+              `UPDATE submissions SET expires_at = ? WHERE id = ?`,
+              body.expires_at ? String(body.expires_at) : null, sub.id,
+            );
+          }
+          if (has('reminders_enabled')) {
+            this.sql.exec(
+              `UPDATE submissions SET reminders_enabled = ? WHERE id = ?`,
+              body.reminders_enabled === false ? 0 : 1, sub.id,
+            );
+          }
+          if (has('reminder_interval_days')) {
+            this.sql.exec(
+              `UPDATE submissions SET reminder_interval_days = ? WHERE id = ?`,
+              Number(body.reminder_interval_days) || 3, sub.id,
+            );
+          }
+        }
+
+        // EnvelopeDetailView.vue:608 has rendered `detail.changed` all along
+        // and had never been sent one.
+        this.audit(sub.id, 'corrected', user.email, user.name, undefined,
+          settings.length > 0 ? { changed: settings } : undefined);
         return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, sub.id)));
       }
 
@@ -1330,10 +1461,15 @@ export class PumasiSignService implements DurableObject {
       );
       if (!submission) return json({ error: 'This signing link is not valid.' }, 404);
 
+      // `expired` sits AHEAD of `already_signed` on purpose: an expired
+      // envelope never completed, so there is no executed document, and
+      // ExternalSignView.vue's RETRIEVABLE branch exists to hand one back.
+      // spec/0007 §S3b.
       const tokenStatus =
         submission.status === 'cancelled' ? 'cancelled'
         : sub.status === 'declined' || submission.status === 'declined' ? 'declined'
         : submission.status === 'completed' ? 'completed'
+        : submission.status === 'expired' ? 'expired'
         : sub.status === 'signed' ? 'already_signed'
         : 'open';
 
@@ -1348,7 +1484,10 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (tokenMatch[2] === 'request-code' && method === 'POST') {
-        if (tokenStatus === 'cancelled' || tokenStatus === 'declined') {
+        // `expired` joins the two refusals: without it the worker emails a
+        // verification code for a dead envelope, and spec/0007 §S0.3 says
+        // this change sends no mail.
+        if (tokenStatus === 'cancelled' || tokenStatus === 'declined' || tokenStatus === 'expired') {
           return json({ error: 'This envelope is no longer active.' }, 410);
         }
         if (!mailConfigured(this.env)) return json({ error: 'Email delivery is not configured.' }, 503);
