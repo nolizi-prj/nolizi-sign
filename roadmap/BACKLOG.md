@@ -7,13 +7,107 @@ First pass 2026-08-30, steward-directed: *"introduce very similar UI and UX
 re-measured this file against `main` @ `2471a29` **and against the deployed
 build**; the reasoning is in that commit's message, and the steward vetoes by
 reverting.
+**Reordered again 2026-09-01 (seventh reorder)** at `c23c7e6`, a narrow pass
+triggered by one published release note; what it re-measured and what it
+carried is the next section, and the reasoning is in that commit's message.
 
 One list, features and bugs together, because a priority that cannot compare
 them is not a priority. Every entry points at its source and carries one line
 of why-here. **The top of this file is what the project manager's next coder
-packet builds.**
+packet builds** — except where an entry says in its own text that it is
+**operator action** rather than a build, as **item 1 does from this reorder
+onward**; the packet then takes the highest entry that *is* a build, and the
+operator item keeps its rank rather than being demoted for being unbuildable.
+That exception is `pumasi-booking`'s, adopted here at `2453adc`'s shape,
+because this repository has now acquired the same problem: merged repairs that
+no commit can deliver.
 
-## Why this reorder exists
+## What the seventh reorder changed, and what it did not measure
+
+**One thing was delivered, one thing was found in this file's neighbour, and
+nothing else was re-measured. That is stated first so nothing below is
+over-read.**
+
+**Labels, and there is no unlabelled entry.** Anything marked **re-verified at
+`c23c7e6`** was re-run or re-read by this pass at this tree or against the live
+host, with the UTC time given. **Every entry, sentence and figure in this file
+that is not so marked is `carried, not confirmed` from the sixth reorder at
+`2471a29`** — this pass did not re-read items 2, 3, 4, 6, 7 or 8–18, and does
+not pretend to have. The blanket form is used rather than seventeen copies of
+the same sentence, and it means exactly what the per-entry form means.
+
+**What moved.**
+
+- **Item 1 — the settings dialog deleting the sender's message — is struck as
+  BUILT at `9659e69`** and retired below, **not** claimed as delivered. Coder
+  job `0074` was barred from touching rankings and correctly left the strike to
+  this seat; its own return block says so.
+- **A new item 1 exists and it is not a build.** The undeployed set reached
+  four repairs at `9659e69` and had no ranked home in this file — it was parked
+  inside a *Retired* entry, where a reader looking for what is owed to users
+  would not look. It now has one. **It proposes no deployer, no date and no
+  revert**; it is **Q-012**, which is open and explicitly outside CHARTER
+  Part 0's proceed-on-default rule.
+- **The new top *build* entry is item 2 — test the deployed tree beyond its
+  stamper.** It is the entry the project manager's next coder packet takes.
+  **That is a delivery above it, not a promotion of it**: item 2 did not become
+  more urgent, the thing outranking it was built.
+- **Item 5 (`RISK_ZONES.yaml`) was weighed for promotion and stays at 5**, with
+  the new evidence and the reason recorded in its own entry rather than
+  inherited.
+- **Nothing else changed rank, and no entry was renumbered.** Items 2–18 and B1
+  keep their numbers deliberately: `STAGE.md`, `pumasi/DECISIONS.md` Q-037 and
+  `pumasi-web` all cite entries here by number, two of those three are not this
+  seat's to edit, and a renumber would manufacture stale citations in files
+  that cannot be fixed in the same commit. This repository has spent four
+  consecutive days correcting stale citations; it does not need three more.
+
+**Re-verified at `c23c7e6` by this pass, with the numbers it actually ran.**
+
+- **The repair itself, read in the tree rather than taken from the commit
+  message.** `service/src/durable.ts:1326`–`:1328` now reads
+  `body.message !== undefined ? (body.message != null ? String(body.message).slice(0, 2000) : null) : (sub.message ?? null)`,
+  with `title`'s `?? sub.title` unchanged on the line above. An omitted
+  `message` is kept; an explicit `null` still clears it. Three frozen cases
+  **A-417–A-419** in the new `service/src/test/envelope-correction.test.ts`
+  drive it.
+- **Root `npm test` at `c23c7e6` — 40 consecutive runs, 40 pass, 0 fail**,
+  identical counts on every run: `Test Files 6 passed (6)`,
+  `Tests 85 passed (85)`, `# pass 31`, `# fail 0`,
+  `assert-service-suite-ran: 31 passing, 0 failing, from 6 compiled`. Run by
+  this seat between **03:25:00 and 03:36:03 UTC**. Job `0074` measured `28 → 31` from
+  two runs before and two after; **this is 40 runs of the after state**, and it
+  is the first time in three evaluations that `STAGE.md` §0 rider (b)'s ask for
+  40 has been met rather than declined. The three added assertions are exactly
+  A-417–A-419.
+- **The live host, and it has not moved.** `https://sign.pumasi.ai/` → **200**
+  at **03:25:05 UTC**; the served bundle is still `/assets/index-CnoFAC2c.js`,
+  the same filename the sixth evaluation measured, so **nothing has been
+  deployed since 01:02 UTC on 2026-09-01** and none of the four merged repairs
+  has reached anybody. `/api/version` → **404** (item 4, unchanged).
+- **B1's facts, re-measured at 03:27 UTC** rather than carried: `ls LICENSE*` →
+  *No such file or directory*;
+  `gh repo view --json licenseInfo,visibility` → `{"licenseInfo":null,"visibility":"PUBLIC"}`;
+  the served `LandingView-C5khdw3s.js` is **10 046 bytes** and still contains
+  **three** `Apache-2.0` claims. **B1 is unchanged, still `Blocked`, still
+  ranked, and no seat here touched it.**
+- **Triage (duty 1), measured rather than manufactured.** `gh issue list
+  --state open` on `pumasi-ai/pumasi-sign` returns **one** issue, **#15**,
+  already carrying `bug` · `feedback` · `rejected`. **There are no unlabelled
+  open issues**, so duty 1 is a no-op this pass and is recorded as one.
+
+**What this pass did not do**, so that its silence is not read as a finding: it
+did not re-run `backend/` pytest or the Playwright `e2e` suite (neither can run
+on this machine — `STAGE.md` §0 rider (b)), did not re-check CI, did not
+re-check branch protection, did not re-read `pumasi/catalog.json` or
+`PRODUCT-RULES.md` for their own sake, and answered, closed, softened or dated
+**no** `DECISIONS.md` question. `PRODUCT-RULES.md` was read for this packet and
+is reported rather than assumed: **still not on `pumasi` main** — `ls
+PRODUCT-RULES.md` at `pumasi` @ `3ad9b1c` → *No such file or directory*, which
+is **Q-017**, open, and now flagged by **nine** consecutive evaluations.
+PR-1 and PR-2 are unchanged and stay at items 4 and 3.
+
+## Why the sixth reorder existed
 
 **Something deployed, and it emptied more of this file than any merge ever
 has.** Between 00:46 and 01:02 UTC on 2026-09-01, `sign.pumasi.ai` was deployed
@@ -95,73 +189,69 @@ version string occurs in the served bundle.
 
 ## The order
 
-**1 · The envelope-settings dialog silently deletes the sender's message to
-signers** — source: coder job `0065`'s hand-off (`spec/0007` §S9a), verified
-independently here against the **deployed** build.
+**1 · Deploy the reviewed build to `sign.pumasi.ai` — four merged repairs, and
+not one of them has reached a user** · **operator action, not a build** —
+source: `pumasi/DECISIONS.md` **Q-012** (open), **Q-028**'s own count, **Q-035**
+and **Q-037**'s `Status` rows, [`STAGE.md`](STAGE.md) §2.6(ii) and §5's state
+(iii). **New in this reorder, and it is new as an *entry*, not as a fact** —
+every one of these repairs was already recorded somewhere in this file. What
+was missing was a single ranked place where a reader could see what the product
+owes its users, so the set was living inside the *Retired* section, which is
+where a reader looks for things that are **done**.
 
-**The defect, in three lines that sit next to each other.** The settings dialog
-PATCHes three fields and no others; the worker treats an absent `message` as a
-request to clear it, while treating an absent `title` as a request to keep it.
+**No coder packet takes this entry.** It cannot be built. **The next coder
+packet takes item 2**, which is the highest entry on this list that a commit
+can close. This entry keeps rank 1 rather than being demoted for being
+unbuildable, because its rank is a statement about what users are owed and not
+a statement about what is schedulable.
 
-Served `EnvelopeDetailView-C4VlFBtA.js`, extracted from `sign.pumasi.ai` at
-2026-09-01 02:02 UTC:
+**What is behind it, counted at `c23c7e6` and named one by one.** Each is
+merged, gate-passed, reviewed and released; each is invisible to every person
+using the product.
 
-```js
-patch(`/submissions/${e}`,{expires_at:t,reminders_enabled:U.value,reminder_interval_days:dt.value}),
-z.value=!1,S.toast(`Envelope settings updated.`)
-```
+| Merged | What a user would get | Where it is recorded |
+| :--- | :--- | :--- |
+| `68e5d08` → **deployed 01:02 UTC** | finished envelopes stay finished | Q-031 — **delivered**, listed only so the count below is not misread |
+| `2471a29` | the expiration date the app asks for is one the service keeps | **Q-035**, window closes 2026-09-07; [`STAGE.md`](STAGE.md) §2.6(ii) |
+| `9659e69` | the settings dialog stops deleting the sender's message | **Q-037**, window closes 2026-09-08; retired below |
+| the login-page presentation batch and #8's landing page | — | already delivered by the 01:02 UTC deploy |
 
-`service/src/durable.ts`, the PATCH handler, at the deployed commit `0e26917`
-(`:1209`–`:1211`) and unchanged in substance at `2471a29`:
+**The number Q-037 uses is four and this seat did not re-derive it.** Q-028
+counted three repairs waiting in the undeployed bundle; the release note of
+`9659e69` says *"this is the fourth"*. **Carried, not confirmed** — this pass
+did not re-run `wrangler deployments list`, and says so rather than restating
+someone else's count as its own measurement.
 
-```ts
-`UPDATE submissions SET title = ?, message = ?, updated_at = ? WHERE id = ?`,
-String(body.title ?? sub.title).slice(0, 200),
-body.message != null ? String(body.message).slice(0, 2000) : null,
-```
+**Re-verified at `c23c7e6`, and it is the one thing here this pass did
+measure.** `https://sign.pumasi.ai/` answered **200** at **2026-09-01 03:25:05
+UTC** and serves `/assets/index-CnoFAC2c.js` — **the same bundle filename the
+sixth evaluation measured at 01:57 UTC**. Nothing has been deployed since
+01:02 UTC on 2026-09-01. So, right now, on the product: **a past-due envelope
+is still signable, and the settings pencil still deletes the sender's message
+to signers and still reports success.**
 
-**`title` has `?? sub.title`. `message` has no counterpart.** Job `0065` drove
-it through the Durable Object harness at `2471a29`:
-`message BEFORE: "Please sign by Friday."` → `PATCH` → `200` →
-`message AFTER: null`.
+**What this entry does not do, stated in full because the temptation is
+obvious.** It **proposes no deployer**, names no person, sets no date, asks for
+no rollback and takes no position on **Q-021**. **Q-012 is open and is
+explicitly outside CHARTER Part 0's proceed-on-default rule** — that rule
+releases *reversible* work from an open window, and assigning a deploy duty is
+a register change. Job `0071` spent a pass measuring four un-announced
+`wrangler deploy` runs from a workstation and added the evidence to Q-028
+without naming an actor; nothing here adds a fifth or names one either.
 
-**Why this is item 1 and not item 5.**
+**And one thing this entry cannot fix, kept beside the work rather than in a
+release note nobody will re-read.** The messages already deleted by the
+settings dialog are **gone** — overwritten with `NULL`, no shadow copy. A
+deploy stops the next one. It does not return the last one.
 
-- **It is live.** `git log -S` puts the line's introduction at a single commit,
-  `c2b674e`, with no change since, so it is in the deployed build and on `main`
-  alike. Unlike every other defect this file has ranked in the last three
-  reorders, no deploy is needed to expose it and none would fix it.
-- **It destroys user content, silently, and reports success.** The sender's
-  message to signers is the covering note on an agreement. It is shown to every
-  recipient (`durable.ts:1418` returns it on the token view) and it is gone
-  after any use of a dialog whose own toast says *"Envelope settings
-  updated."* Nothing in the UI says the message was touched, and nothing asks.
-- **The dialog is the one the product tells senders to use.** A past-due
-  envelope's detail page reads *"Its expiration date has already passed — set a
-  new one"* and draws the pencil that opens this dialog. So the product invites
-  the sender into the exact action that deletes their message.
-- **And it gets worse the moment `2471a29` deploys, not better.** Today the
-  dialog discards the deadline too, so a sender who used it achieved nothing
-  and lost their message. After the deploy the deadline saves — which means
-  senders will be *encouraged* to use the dialog, and each use will still wipe
-  the message.
-
-**What this entry does and does not decide.** The repair is small and is the
-coder's to shape; the obvious form is `body.message !== undefined ? … :
-sub.message`, matching `title`'s idiom on the line above, with an explicit
-`null` still meaning *clear it*. **This entry does not authorise widening the
-settings dialog** to send `message`, which would be a different change with a
-UI cost. It also does not decide whether the `corrected` audit row should
-record a message change; `2471a29` added a `changed` list to that row, and
-whichever way the fix goes it should appear there.
-
-**A frozen case belongs with it.** Item 2's suite already drives the PATCH
-route through `test/support/durable-harness.ts`, so the case is cheap: set a
-message, PATCH settings only, assert the message survives. **Not `can_hurt`
-under CHARTER Part 4 on this seat's reading** — it repairs a destructive write
-rather than creating one — but this repository has no `RISK_ZONES.yaml`
-(item 5), so Part 4's *unmapped defaults to `can_hurt`* applies and the packet
-should plan for the 7-day window rather than discover it at the gate.
+**Why this is item 1 and not item 6.** Because the alternative is a file whose
+top says *build this next* while the product's most serious defects sit
+finished on a shelf, and a register that cannot show that is the exact drift
+this repository keeps paying for. **Its growth is the thing worth watching**:
+one repair waiting was a delay, four is a pattern, and whether that pattern
+warrants an escalation beyond recording it is **the steward's**, through
+Q-012 — not this seat's, which is why this entry escalates nothing and only
+counts.
 
 
 **2 · Test the deployed tree beyond its stamper — the breadth that is left**
@@ -255,6 +345,24 @@ above item 1's own frozen case for a reason worth stating: item 1's test is
 cheap precisely because this entry's three deliveries built the harness it will
 use.**
 
+**Updated by the seventh reorder at `c23c7e6`, and this is the whole of what
+changed here.** **This is now the top *build* entry on this list — the entry
+the project manager's next coder packet takes.** It did not move and it did not
+become more urgent: **the data-loss defect that outranked it was built**, at
+`9659e69`, and is retired below. The two sentences above about ranking below
+*"the live data-loss defect at item 1"* describe the sixth order and are left
+as its record; item 1 today is the undeployed set, which is operator action and
+not a build. **The forecast in the last of them held exactly**: that entry's
+frozen case was cheap because this entry's harness already existed —
+`envelope-correction.test.ts`'s three new cases (**A-417–A-419**) reach the
+real Durable Object through `test/support/durable-harness.ts`, which is this
+entry's own delivery. Assertion count **re-verified at `c23c7e6` by this pass**
+and moved again: **28 across five files → 31 across six**, `# fail 0`, over
+**40 consecutive runs**. **Everything else in this entry — the OAuth-callback
+strand, the uncovered modules, `e2e-workflow.test.ts`'s misnomer and the
+Playwright suite driving `backend/` — is `carried, not confirmed` from the
+sixth reorder;** this pass did not re-read any of it.
+
 **3 · The feedback screenshot must be attached, not pre-attached** — source:
 `PRODUCT-RULES.md` **PR-2** (v1.0, read fresh this packet from `pumasi` branch
 `worktree-product-rules` `0115758`; **still not on `pumasi` main** — checked at
@@ -315,8 +423,51 @@ directly."* It reached the right answer — `can_hurt` — and the reasoning is
 auditable. The next such release repeats the work, and the release after that
 may reason to a different answer, which is the actual risk here.
 
-**Why it ranks seventh and not higher — the packet asked for this reasoning
-here, so here it is.**
+**Weighed for promotion at the seventh reorder and kept at 5 — the packet asked
+that this rank be weighed rather than inherited, so here is the weighing and
+the new evidence it rests on.** **Re-verified at `c23c7e6`: `ls
+RISK_ZONES.yaml` → *No such file or directory*, still.** What has changed is
+the cost, and it is now measured rather than forecast. **CHARTER Part 4 has
+defaulted three consecutive releases in this repository to `can_hurt` for the
+sole reason that this file does not exist** — **Q-031** (*"`pumasi-sign`
+carries no `RISK_ZONES.yaml` (checked, not assumed), so CHARTER Part 4's table
+was applied directly"*), **Q-035**, and now **Q-037**, whose *Risk class* row
+re-checked the absence at `3edd06f` and took a 7-day window on it. **And the
+risk this entry forecast has materialised once**: Q-037's row records that
+item 1's author read the change as **not** `can_hurt` on the merits, that the
+releasing seat **agreed with that reading and took the window anyway**, and
+that it did so because reclassification is itself a can-hurt change. That is
+two seats reasoning to the same outcome by different routes and writing the
+disagreement down — the cheap version of the failure, not the expensive one,
+and it is exactly what a one-line file would have made unnecessary.
+
+**It still does not move, and the reason is the first of the three below rather
+than inertia.** The tax is real, it is now three releases deep, and it is
+**paid in the safe direction every time** — no release has been
+*under*-classified and none can be while Part 4's default stands. Items 2, 3
+and 4 are each wrong in a direction the system does not self-correct, and item
+1 is what users are owed. Promoting this above them would buy tidier paperwork
+at the price of the only entries with a user on the other end. **What this pass
+does instead is name the trigger**: the moment a seat reasons to a *different*
+classification than a previous one did, rather than to the same one by a
+different route, this entry stops being process infrastructure and is promoted
+on that evidence. **Two riders**, so the rank is not merely re-inherited next
+pass: it stays the strongest candidate to be **folded into whichever packet
+next touches this repository's root**, exactly as item 6 is; and it is
+deliberately **not renumbered**, because `pumasi/DECISIONS.md` Q-037 — published
+one hour before this pass — cites it as *"that repository's `BACKLOG.md` item
+5"*, and that entry is the steward's to edit, not this seat's.
+
+**Why it ranks fifth and not higher — the packet asked for this reasoning
+here, so here it is.** *(This heading read **"seventh"** from the day the entry
+was written, and ground 3 below says the entry "sits immediately above item 8",
+which is true of rank 7 and not of rank 5. Both are corrected at `c23c7e6` as
+what they are — drafting residue from an entry that was placed at 5 carrying
+the words for 7 — and no claim is made about how it happened. **The three
+grounds themselves are the sixth reorder's, unchanged and `carried, not
+confirmed`**, with one live caveat: ground 2's *"items 1 and 2 are a broken
+promise and the coverage that would catch the next one"* described the sixth
+order. Item 1 today is the undeployed set.)*
 
 1. **The charter's default already fails safe, and that is decisive.** An
    absent file cannot cause *under*-classification: *unmapped or unclear
@@ -331,8 +482,10 @@ here, so here it is.**
    process infrastructure. It is worth doing and it is not worth doing first.
 3. **It is small, which cuts both ways.** Half an hour of work is a weak reason
    to rank something high and a good reason not to leave it undone before a
-   long feature run — which is why it sits immediately above item 8, where the
-   parity mandate resumes and several entries will be `can_hurt`.
+   long feature run — which is why it sits above item 8, where the parity
+   mandate resumes and several entries will be `can_hurt`. *(Read "immediately
+   above item 8" until `c23c7e6`; the entry has been item 5, with 6 and 7
+   between, since it was written.)*
 
 **The precedent is not what it was described as, and a packet should know
 before copying it.** The report that prompted this entry says `pumasi-booking`
@@ -621,6 +774,74 @@ recorded in those words rather than flattened into *delivered*, because a
 register that says a thing shipped without saying what shipped it is how the
 next seat learns the wrong lesson — and because the one retired by a build is
 the one that has **not** reached a user.
+
+---
+
+**One entry retires at the seventh reorder, and like the sixth's build-retired
+entry it is retired from the *build order* and not claimed as delivered.**
+
+**~~1 · The envelope-settings dialog silently deletes the sender's message to
+signers~~ — BUILT 2026-09-01 at `9659e69`, and deliberately NOT recorded as
+delivered** (coder job **`0074`** — not `0073`, corrected at `c23c7e6` and at
+`pumasi` `df89865`; `spec/0008`; `pumasi/DECISIONS.md` **Q-037**, 7-day
+can-hurt window open, closes **2026-09-08**). **Was item 1.** Struck by this
+seat: the job that built it was barred from touching rankings, said in its own
+return block that the strike was the next evaluation's job, and did not touch
+this file.
+
+**Re-verified at `c23c7e6` by this pass, in the tree rather than taken from the
+commit message.** `service/src/durable.ts:1326`–`:1328`:
+
+```ts
+const message = body.message !== undefined
+  ? (body.message != null ? String(body.message).slice(0, 2000) : null)
+  : (sub.message ?? null);
+```
+
+`title`'s `?? sub.title` is unchanged on the line above, so the two fields now
+have the same rule; **an omitted `message` is kept and an explicit `null` still
+clears it**, which is the discrimination this entry asked for by name and the
+one the tempting `??` shortcut would have collapsed. Three frozen cases
+**A-417–A-419** in a new file, `service/src/test/envelope-correction.test.ts`,
+drive the real service through its own entry point — A-417 sends *literally the
+body the settings dialog sends* and asserts the message survives on the stored
+row, in the response and on the recipient's token view. Root `npm test` at
+`c23c7e6`, **40 runs, 40 pass**: `# pass 31`, `# fail 0`, `from 6 compiled` —
+28 → 31 is exactly these three.
+
+**Two things retire with it and neither is optional reading.**
+
+**(1) It is delivered in the half a commit can deliver, and not in the
+product.** Q-037's own `Status` row says so: *"As of publication the settings
+dialog on `sign.pumasi.ai` still deletes the sender's message to signers,
+silently, and still reports success."* **Re-verified at `c23c7e6`:**
+`https://sign.pumasi.ai/` answered **200** at **2026-09-01 03:25:05 UTC** and
+still serves `/assets/index-CnoFAC2c.js`, the bundle the sixth evaluation
+measured — built from `0e26917`, which predates this repair by two releases.
+**That residue is item 1 of the order above**, where it sits beside the
+`expires_at` sweep and where a reader looking for what users are owed will
+find it. It is **not** left here, because the *Retired* section is where a
+reader looks for things that are finished.
+
+**(2) What the repair cannot do, and it is the entry's real outcome.**
+**Messages already deleted are gone.** They were overwritten with `NULL` and
+there is no shadow copy, so there is nothing to restore from and no count of
+how many there were. This entry stops the next deletion; it does not undo one
+that happened. The release note says this in the sender's own words rather than
+letting *"fixed"* imply otherwise, and it is recorded here for the same reason:
+a Completed section that records only what was gained is a register that
+teaches the wrong lesson about what a data-loss defect costs.
+
+**One thing this entry asked for and did not decide, answered elsewhere and
+recorded rather than left dangling.** It declined to say whether the
+`corrected` audit row should name a message change. **Q-037 answered it: yes,
+and `title` goes with it**, compared against the stored row rather than against
+presence in the body. That is a change to what a past-facing record says about
+a correction, which is why it is named here and not only in a diff. The 409
+guard stays keyed on `settings` alone; **A-416, from the `expires_at` release
+earlier the same day, passes unaltered, and no frozen case was amended — so
+`pumasi/DECISIONS.md` Q-030 is not reached by this build and no reading of it
+is taken here in either direction.**
 
 ---
 

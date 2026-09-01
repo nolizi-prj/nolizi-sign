@@ -203,6 +203,44 @@ deliver a claim above, and does any claim now have a live falsifier? A claim
 that acquires one is *demoted in this file in the same commit that finds it* —
 the same rule `STAGE.md` runs on.
 
+**Seventh pass, 2026-09-01, at `c23c7e6` — narrow, and it changes nothing in
+§1–§4.**
+Release checked: [`2026-09-01-pumasi-sign-message-survives-settings.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-09-01-pumasi-sign-message-survives-settings.md)
+(`pumasi/DECISIONS.md` **Q-037**, 7-day can-hurt window open, closes
+**2026-09-08**; coder job **`0074`**, `9659e69`).
+
+- **Does the release deliver a claim above? No, and this is the clearest case
+  of that answer this file has had.** `9659e69` stops a settings-only `PATCH`
+  deleting the sender's message to signers. That message is not C1–C6; it is
+  the sender's covering note, and no claim here promises it survives. **The
+  sixth evaluation already recorded the defect and correctly declined to hang
+  it on C1** — the stamped PDF and its certificate were never touched — so the
+  repair retires a finding, not a claim.
+- **Does any claim now have a live falsifier? No. C1–C6 unchanged, and C5 stays
+  suspended.** **Q-021 is unanswered and untouched by this pass**; re-checked
+  at **2026-09-01 03:27 UTC**, the repository still has no `LICENSE`, `gh repo
+  view --json licenseInfo` still returns `null` on a `PUBLIC` repository, and
+  the served landing chunk still carries **three** `Apache-2.0` claims. **This
+  file still does not adopt a claim because a deployment made it.**
+- **And the release does not move anything this file says about the product,
+  because it has not reached the product.** Re-measured by this seat: `https://sign.pumasi.ai/`
+  → **200** at **03:25:05 UTC**, still serving `/assets/index-CnoFAC2c.js`, the
+  same bundle as before the repair. **Q-037's own `Status` row says the same
+  thing in the sender's words**, and the undeployed set is now **four repairs
+  deep** — [`BACKLOG.md`](BACKLOG.md) item 1. §4 above already states that
+  merged is not shipped and needs no change.
+- **One outcome is recorded here because no claim covers it and it is the
+  release's real cost.** **Messages already deleted are gone** — overwritten
+  with `NULL`, no shadow copy, no count of how many. This file's job is what
+  the product promises; it promised nothing about that message, which is
+  precisely why the loss appears in no claim and is written down anyway.
+- **Not re-taken this pass:** every `durable.ts` line number above is the sixth
+  evaluation's, **carried and not confirmed** — `9659e69` moved lines in that
+  file, so treat them as stale until a pass re-measures them. The one citation
+  this pass did read is the repair itself, at `durable.ts:1326`–`:1328`.
+
+---
+
 **Sixth evaluation, 2026-09-01, against `main` @ `2471a29` — and, for the first
 time in this file's life, against a deployment that had moved.**
 Release checked: [`2026-09-01-pumasi-sign-expiration-dates-bind.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-09-01-pumasi-sign-expiration-dates-bind.md)
