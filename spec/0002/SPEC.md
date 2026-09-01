@@ -109,6 +109,14 @@ part (c), carried as a sentence rather than by deleting a job.
 **S4b.** `service/src/test/` still holds `stamping.test.ts` and
 `e2e-workflow.test.ts`.
 
+> **Amended 2026-09-01 — amendment 2, below.** `e2e-workflow.test.ts` was
+> renamed to `stamping-multi-signer.test.ts` (spec/0009 §S5): one `git mv`,
+> nothing deleted, not one assertion changed. **S4b is not rewritten**, because
+> what it recorded was true when it was written; read it with the amendment
+> log. A-109 now names the new spelling **and** asserts a name-independent
+> floor on how many test files the directory holds, which is the clause S4b
+> was always trying to state.
+
 **S4c.** `backend/` still holds test functions.
 
 Q-018 (a) and (b) add coverage and documentation. Retiring `backend/`,
@@ -235,16 +243,21 @@ until it has been run against the tree it exists to reject.
 
 ## Amendment log
 
-One amendment, taken **in the open and in the right order**: amended, given a
-fresh cross-family spec review, and only then built against. The first code
-review OBJECTED on both `0023` and `0026` today citing CHARTER Part 3
-requirement 2 — an amendment folded into the implementation commit instead —
-so the ordering here is deliberate, and the amendment sits in its own commit
-with no implementation in it.
+**Two amendments**, each taken **in the open and in the right order**: amended,
+given a fresh cross-family spec review, and only then built against. The first
+code review OBJECTED on both `0023` and `0026` on the day amendment 1 was made,
+citing CHARTER Part 3 requirement 2 — an amendment folded into the
+implementation commit instead — so the ordering here is deliberate, and
+amendment 1 sits in its own commit with no implementation in it. **Amendment 2
+(2026-09-01, spec/0009) is ordered the same way and adds one condition its
+predecessor did not need:** it is taken under `pumasi/DECISIONS.md` **Q-030**,
+which is open, and Q-030's rider (b) requires that the family reviewing this
+amendment is not the family reviewing the code that follows it.
 
 | # | What | When | Spec review |
 | :-- | :--- | :--- | :--- |
 | 1 | **A-102, A-105 and A-106 read the workflow's comments as if they were its configuration.** The cases now strip whole-line `#` comments before matching. | before implementation was committed | see the `Reviewed-By:` trailer on the amendment commit |
+| 2 | **A-109 identified one of the two files it protects by a name that has changed.** `service/src/test/e2e-workflow.test.ts` was renamed to `stamping-multi-signer.test.ts` (spec/0009 §S5); the case now names the new spelling, **and gains a second `it()` asserting that `service/src/test/` never holds fewer than two `*.test.ts` files** — a floor counted by reading the directory, naming nothing. | before implementation was committed | see the `Reviewed-By:` trailer on the amendment commit |
 
 **Why it was needed, and how it was found.** The `service` job's comments
 explain *why* the build step must precede `npm test` — so they contain the
@@ -273,3 +286,48 @@ the direction that cannot lower a frozen bar. Whole lines only: `#` inside a
 shell `run:` block is a legitimate character and is deliberately left alone;
 a trailing comment on a `run:` line could still be read as configuration, and
 that limit is stated rather than papered over.
+
+### Amendment 2 — why it was needed, and which kind of amendment it is
+
+**Taken under `pumasi/DECISIONS.md` Q-030's stated default**, which is open:
+requirement 2's remedy is available to the builder, on a numbered amendment in
+the open, never a silent edit, with a fresh cross-family spec review. Its rider
+(b) — the amendment's spec reviewer must not be the code reviewer of the change
+— is honoured in spec/0009 §S10a. This repository has done this once before, at
+`68e5d08` (spec/0006 §S4-Q030); this is the second use, not the first.
+
+**Rider (a): claimed as a FIXTURE change, with the reasoning shown so a
+reviewer can disagree with a citation.** The standard A-109 enforces is
+*nothing is bought by deletion*, and nothing was deleted: one `git mv`, same
+artefact, same suite, same runner. Measured with `git diff -M`, the renamed
+file's whole diff removes **exactly one line** — the old `test()` title — and
+adds a title and a header comment; **no assertion, fixture value or import
+changed**. (An earlier draft claimed the content was byte-identical, which was
+false and was cited by a spec reviewer; the accurate form is above and it is
+the weaker one.) What moved is the string by which the case **locates** the
+artefact it protects. A reviewer may reasonably read a
+filename inside an `existsSync` as an assertion rather than a fixture; under
+that reading the amendment is still in the direction below, which is why the
+disagreement is cheap.
+
+**Direction — the same test amendment 1 applied to itself, and the same
+answer.** The amendment makes A-109 *strictly more able to fail* and *no easier
+to pass*. Both filenames are still required to exist; nothing was weakened and
+nothing was removed, and the new clause can only add a way to go red.
+
+**The limit, stated rather than papered over, in amendment 1's manner — and it
+is stated because the first spec review of spec/0009 objected to a draft that
+overclaimed it** (`reviews/20260831-231324-spec-qwen.md`, qwen, cited and
+correct). The floor is `>= 2`, a **count**, so: it cannot tell a real test file
+from an empty one, and it does **not** catch the deletion of an unlisted third
+file while the two named files remain — seven files exist today and five would
+still pass. Withdrawn as false: the claim that it catches *"a deletion whatever
+anything is called"*. What it does hold is narrower and is the hole the rename
+walked through: **the directory can never be emptied or reduced below the two
+files this case froze, whatever the survivors are called**, so a packet that
+satisfies A-109 by deleting its filename list along with the files it names
+still fails. A clause demanding the *current* count would go red on every
+legitimate addition — the opposite failure — and would fork from the directory
+it counts (L-007). The per-file guarantee lives in
+`.github/scripts/assert-service-suite-ran.sh`'s src↔dist comparison, frozen as
+**A-104**, which is where it can be held without a stale constant.
