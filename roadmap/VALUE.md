@@ -10,8 +10,12 @@ proposition that lags the product is the drift this project keeps paying for
 
 **Two things a reader must know before the claims.**
 
-1. **The stage is [`alpha`](STAGE.md)**, not `beta`, whatever the chip on the
-   landing page says. Nothing below is a promise to a stranger yet.
+1. **The stage is [`alpha`](STAGE.md)**, not `beta`. *Updated 2026-09-01
+   (sixth evaluation):* this line used to add *"whatever the chip on the
+   landing page says"*, because the page carried a `BETA` chip. **It no longer
+   does, and the page is now live**: the served landing chunk derives its badge
+   from `STAGE.md` and renders `ALPHA — ACTIVE DEVELOPMENT`. Nothing below is a
+   promise to a stranger yet.
 2. **Claims are grounded in the tree that serves users** — the Cloudflare
    Worker in `service/`, which is what `sign.pumasi.ai` runs. The FastAPI app
    in `backend/` implements the same product and is not in production; which
@@ -41,23 +45,32 @@ but rate-limiting.
 
 **The organisation that wants its own name on the envelope without an upgrade.**
 Company name, logo and primary colour are per-owner rows in the deployed
-service (`service/src/durable.ts:152`, `:808`), applied to what recipients see,
-at no tier — because there are no tiers.
+service (`service/src/durable.ts`, the `org_branding` table at `:166` and the
+signer-facing read at `:890`), applied to what recipients see, at no tier —
+because there are no tiers.
 
 **The external signer, who did not choose any of this.** They get a link and an
 emailed code, sign in a browser, and never make an account
-(`durable.ts:1310` — the access token *is* the identity). This is the largest
-population the product touches and the one that never reads a pricing page.
+(`durable.ts:1456` — `SELECT … FROM submitters WHERE token = ?`; the access
+token *is* the identity). This is the largest population the product touches
+and the one that never reads a pricing page.
 
 **Not yet: the operator who wants to run it themselves.** The repository is
-public but carries **no `LICENSE`** (`gh repo view --json licenseInfo` → `null`,
-2026-08-31). Until that is resolved — `pumasi/DECISIONS.md` **Q-021** — a
-self-hoster has no grant of rights, and this file does not name them as an
-audience. See §4.
+public but carries **no `LICENSE`** (`gh repo view --json licenseInfo` →
+`null`, re-measured 2026-09-01 at `2471a29`). Until that is resolved —
+`pumasi/DECISIONS.md` **Q-021** — a self-hoster has no grant of rights, and
+this file does not name them as an audience. See §4.
+
+***Updated 2026-09-01 (sixth evaluation):*** **the product's own landing page
+now tells this audience the opposite**, in three separate places, and it has
+done so publicly since 01:02 UTC. This paragraph is the register and is
+unchanged; the page is wrong; **Q-021** owns the divergence. A self-hoster
+reading `sign.pumasi.ai` today would be relying on a grant this repository does
+not make.
 
 **Contested, and named rather than papered over.** `README.md` describes an
 internal tool for Pumasi employees; the landing page sells public self-serve
-signup; the live worker's `establishSession` (`durable.ts:655`) creates an
+signup; the live worker's `establishSession` (`durable.ts:727`) creates an
 account for any verified email address, with no domain gate. Three different
 answers to *who may hold an account*, in one product. That is Q-018's second
 half, and no claim below depends on which way it lands.
@@ -78,7 +91,7 @@ signed, on every envelope, at no tier.** `stampAndCertifyPdf`
 (`service/src/core/stamping.ts`) hashes the original bytes with SHA-256 before
 stamping (`:52`), draws the digest onto an appended certificate page (`:199`),
 and hashes the completed output (`:278`). It runs on the completion path
-(`durable.ts:1570`), not behind a flag.
+(`durable.ts:1735`), not behind a flag.
 *Falsified by:* one completed envelope whose stored PDF has no certificate
 page; one certificate whose printed digest does not match `sha256sum` of the
 file it claims to describe; any tier or setting that turns it off.
@@ -98,7 +111,7 @@ password, or verify a domain in order to complete a signature.
 
 **C4 — Your organisation's identity, not the vendor's, on what the recipient
 sees.** Per-owner company name, logo and colour (§1), defaulting to
-`Pumasi Sign` / `#1A56DB` when unset (`durable.ts:813`).
+`Pumasi Sign` / `#1A56DB` when unset (`durable.ts:919`).
 *Falsified by:* branding that a recipient never sees; branding gated on
 anything.
 
@@ -108,11 +121,20 @@ and R2 for documents; `npm run deploy` is `wrangler deploy`. No Kubernetes, no
 database server to operate.
 *Today's honest limit, and it is the sharp one:* **there is no licence**, so
 "you could" is an architectural statement, not a legal one. This claim is
-**suspended** until Q-021 resolves — it may not be used in public copy before
-then, and the landing page's current "Apache-2.0 (Open Source)" row is
-[`BACKLOG.md`](BACKLOG.md) **B1**, in that file's Blocked section (it was item 1
-when this was written; the numbered order now holds only entries a coder may
-execute today).
+**suspended** until Q-021 resolves and may not be used in public copy before
+then.
+
+***Updated 2026-09-01 (sixth evaluation), and the update is the reason this
+suspension mattered.*** This file suspended C5 rather than write the claim, and
+[`BACKLOG.md`](BACKLOG.md) **B1** held the page behind Q-021 for the same
+reason. **The page deployed anyway, at 01:02 UTC on 2026-09-01, with the claim
+in it** — three times, in three distinct sentences (`STAGE.md` §2.3.2). So the
+position this file took is intact and the product's public surface no longer
+matches it: **a Pumasi page is now making a claim this file refuses to make.**
+That is not a reason to relax the suspension. It is recorded here, and as
+evidence on Q-021, Q-028 and Q-012, because the next seat to write public copy
+about this product will find the live page and this file disagreeing, and needs
+to know which one is the register. **This one is.**
 *Falsified by:* a deployment that needs a component not in this repository; a
 resolved Q-021 that declines to license the code.
 
@@ -127,12 +149,19 @@ project is built to notice.
 
 ## 4 · What this file does not claim, on purpose
 
-- **Not "open source."** No licence (§1, C5).
+- **Not "open source."** No licence (§1, C5) — `ls LICENSE*` returns nothing
+  and `gh repo view --json licenseInfo` returns `null` on a `PUBLIC`
+  repository, re-measured at `2471a29`. **This line is now in direct conflict
+  with the product's own front page**, which says the opposite three times.
+  The conflict is **Q-021**'s to resolve and no seat may resolve it by editing
+  either side; see C5.
 - **Not "beta," and not "reliable for strangers."** [`STAGE.md`](STAGE.md) §2
   lists **six** reasons. *Corrected 2026-08-31 (fourth evaluation):* this line
   said the largest was that the deployed tree carries **"two tests, both on the
-  PDF stamper"**, and **that is no longer true** — the served tree's suite is
-  **21 tests across four files**, two of which drive a real Durable Object.
+  PDF stamper"**, and that stopped being true then. *Re-measured 2026-09-01
+  (sixth evaluation):* the served tree's suite is **28 tests across five
+  files**, three of which drive a real Durable Object and one of which drives
+  `service/src/worker.ts`.
   *Re-run 2026-09-01 (fifth evaluation) at `56a8bf8` and unchanged*, over four
   runs: `# pass 21 · # fail 0`. `STAGE.md` §2.1 carries the measurement.
   What holds the label back is what that coverage went and found — two defects
@@ -140,17 +169,24 @@ project is built to notice.
   different states separately, because one was repaired and the product did not
   change**:
   - The **envelope transitions** that let an executed agreement be voided,
-    re-completed or declined after the fact are **fixed on `main` at
-    `68e5d08`** and **still live to every user**, because nothing has deployed
-    (re-`curl`ed 2026-09-01 00:29 UTC). `STAGE.md` §2.6(i) and §5's state
-    (iii); `pumasi/DECISIONS.md` **Q-031**, window open to 2026-09-07, and
-    **Q-012**, which owns the deploy and is open.
-  - The **`expires_at` a worker never acts on** is unfixed in source and in
-    production, and is now `BACKLOG.md` **item 1**. `STAGE.md` §2.6(ii).
+    re-completed or declined after the fact were fixed on `main` at `68e5d08`
+    and are **now live to every user** — *updated 2026-09-01 (sixth
+    evaluation)*, the deployment at 01:02 UTC carried them. `STAGE.md` §2.6(i);
+    `pumasi/DECISIONS.md` **Q-031**, window open to 2026-09-07.
+  - The **`expires_at` a worker never acts on** is **fixed in source at
+    `2471a29` and still true for every user**: the live worker's handler list
+    is `fetch` alone, so no sweep runs. `STAGE.md` §2.6(ii);
+    `pumasi/DECISIONS.md` **Q-035**, window open to 2026-09-07, and **Q-012**,
+    which owns the deploy and is open.
+  - **New at the sixth evaluation, and it is live in both trees:** the
+    envelope-settings dialog **deletes the sender's message to signers** on
+    every save. `BACKLOG.md` **item 1**; `STAGE.md` §5.
 
-  Breadth is still missing too (`worker.ts`, R2, mail, feedback, conversion,
-  the OAuth callback), which is `BACKLOG.md` **item 2** — and **`68e5d08`
-  widened none of it**: a defect closed is not breadth gained.
+  Breadth is still missing (R2, mail, feedback, conversion, the OAuth
+  callback), which is `BACKLOG.md` **item 2** — though **`2471a29` closed the
+  sharpest strand**, covering `service/src/worker.ts` for the first time, and
+  took the served tree's suite from 21 across four files to **28 across
+  five**.
 - **Not a QES / eIDAS-qualified signature.** The product produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware the product does not touch. (The landing page states
@@ -166,6 +202,49 @@ At every product evaluation (role duty 4): does the release just shipped
 deliver a claim above, and does any claim now have a live falsifier? A claim
 that acquires one is *demoted in this file in the same commit that finds it* —
 the same rule `STAGE.md` runs on.
+
+**Sixth evaluation, 2026-09-01, against `main` @ `2471a29` — and, for the first
+time in this file's life, against a deployment that had moved.**
+Release checked: [`2026-09-01-pumasi-sign-expiration-dates-bind.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-09-01-pumasi-sign-expiration-dates-bind.md)
+(`pumasi/DECISIONS.md` **Q-035**, 7-day can-hurt window open, closes
+2026-09-07). **Plus an unannounced deployment of `sign.pumasi.ai` at
+2026-09-01 01:02 UTC, which no release note covers and which is the reason this
+evaluation exists.**
+
+- **Does the release deliver a claim above? No, and it is honest about which.**
+  `2471a29` makes the worker honour a deadline the SPA already promised. That
+  is not one of C1–C6; it repairs a promise the *interface* made that this file
+  never wrote down, which is the good case for a value register — the claim was
+  never made here because it was never true.
+- **Does the deployment deliver one? Two, and both are C-adjacent rather than
+  C-delivering.** The envelope guards behind **C1**'s integrity story reached
+  users, and the cited-pricing table behind **C6** reached them cited. Neither
+  is a new claim; both are the first time an existing one is *true in front of
+  a stranger* rather than only in a repository.
+- **Does any claim now have a live falsifier? One does, and it is C5.**
+  C5's stated falsifier is *"a resolved Q-021 that declines to license the
+  code"*. Q-021 is not resolved, so C5 is not falsified — **but its suspension
+  has been overtaken by an act rather than by an answer.** This file suspended
+  the claim; the product published it anyway, three times, on its own front
+  page. **C5 stays suspended.** A page is not a register, and this file does
+  not adopt a claim because a deployment made it.
+- **And one new falsifier was found for nothing in particular, which is why it
+  is here.** The settings dialog's silent deletion of the sender's message does
+  not falsify C1 — the stamped PDF and its certificate are untouched — but it
+  is the second time in three evaluations that *the row and the artefact
+  disagree*, which is **L-009** at row scale for the second time. Two instances
+  is a pattern, and the pattern belongs to `BACKLOG.md` item 2's breadth
+  argument rather than to any claim above.
+- **Citations re-taken, not carried.** Every `durable.ts` line number in this
+  file had drifted — job `0064` found four of them wrong at `ba1cea7` while
+  writing `README.md`, and `2471a29` moved them again. Re-measured at
+  `2471a29`: `org_branding` at `:166`, the signer-facing branding read at
+  `:890`, the branding default at `:919`, `establishSession` at `:727`, the
+  token-is-identity `SELECT` at `:1456`, `stampAndCertifyPdf` at `:1735`. The
+  numbers inside the historical evaluation entries below are **not** updated —
+  they are records of what was cited then.
+
+---
 
 **Fifth evaluation, 2026-09-01, against `main` @ `56a8bf8`.**
 Release checked: [`2026-08-31-pumasi-sign-finished-envelopes-stay-finished.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-08-31-pumasi-sign-finished-envelopes-stay-finished.md)
