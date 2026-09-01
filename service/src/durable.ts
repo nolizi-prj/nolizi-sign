@@ -1307,11 +1307,28 @@ export class PumasiSignService implements DurableObject {
           return json({ error: 'This envelope is already closed' }, 409);
         }
 
+        // `title` has always been KEPT when the body omits it -- `?? sub.title`
+        // below -- and `message` had no counterpart, so a body that never
+        // mentioned it wrote NULL. The settings dialog above omits it on every
+        // save, so every use of that pencil deleted the sender's covering note
+        // to the signers, silently, and closed on "Envelope settings updated."
+        // The note is returned to every recipient on the token view (:1593).
+        // roadmap/BACKLOG.md item 1; spec/0008 §S1.
+        //
+        // `!== undefined` rather than `??`, deliberately: the two cases this
+        // has to tell apart are ABSENT (keep) and PRESENT-AND-NULL (clear).
+        // The correct-details dialog (EnvelopeDetailView.vue:380) sends
+        // `message: null` on purpose when the sender empties the box, and the
+        // send form at :1175 writes `body.message ?? null` on create. `??`
+        // here would collapse the two and make a message unremovable, which is
+        // the same class of bug pointing the other way. spec/0008 §S2.
+        const title = String(body.title ?? sub.title).slice(0, 200);
+        const message = body.message !== undefined
+          ? (body.message != null ? String(body.message).slice(0, 2000) : null)
+          : (sub.message ?? null);
         this.sql.exec(
           `UPDATE submissions SET title = ?, message = ?, updated_at = ? WHERE id = ?`,
-          String(body.title ?? sub.title).slice(0, 200),
-          body.message != null ? String(body.message).slice(0, 2000) : null,
-          now, sub.id,
+          title, message, now, sub.id,
         );
 
         if (settings.length > 0) {
@@ -1340,9 +1357,28 @@ export class PumasiSignService implements DurableObject {
         }
 
         // EnvelopeDetailView.vue:608 has rendered `detail.changed` all along
-        // and had never been sent one.
+        // and had never been sent one until 2471a29, which sent it the three
+        // settings and nothing else -- so a correction to the WORDS of the
+        // agreement named nothing, while a correction to a reminder interval
+        // named itself. spec/0008 §S3 answers that question `yes` rather than
+        // leaving it open: title and message join the same list.
+        //
+        // Compared against the stored row, not against presence in the body,
+        // because both dialogs re-send fields the sender did not touch --
+        // EnvelopeDetailView.vue:380 always sends both -- and a history line
+        // claiming a change that did not happen is its own defect. `sub` is
+        // the pre-PATCH snapshot read at :1219, so the writes above do not
+        // move it.
+        //
+        // The 409 guard stays keyed on `settings`, NOT on this list: title and
+        // message keep the behaviour they had on every status, which is what
+        // spec/0007 §S3d promised and what this spec does not touch.
+        const changed = [...settings];
+        if (title !== sub.title) changed.push('title');
+        if (message !== (sub.message ?? null)) changed.push('message');
+
         this.audit(sub.id, 'corrected', user.email, user.name, undefined,
-          settings.length > 0 ? { changed: settings } : undefined);
+          changed.length > 0 ? { changed } : undefined);
         return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, sub.id)));
       }
 
