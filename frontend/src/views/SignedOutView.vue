@@ -10,22 +10,27 @@ const microsoftLogoutUrl = "https://login.microsoftonline.com/common/oauth2/v2.0
 </script>
 
 <template>
-  <v-container class="d-flex justify-center pt-16">
-    <v-card max-width="480" class="pa-4 text-center">
+  <v-container class="d-flex justify-center pt-16 pb-16">
+    <v-card max-width="480" width="100%" class="pa-6 text-center pumasi-card border rounded-lg shadow-sm">
       <div class="text-center pt-2 mb-2">
-        <img src="/logo-mark.png" alt="Pumasi" style="height: 48px; width: 48px;" />
+        <div class="d-flex justify-center mb-2">
+          <img src="/logo-mark.png" alt="Pumasi Sign" style="height: 44px; width: auto; max-width: 100%; object-fit: contain;" />
+        </div>
       </div>
-      <v-card-title>You've signed out</v-card-title>
-      <v-card-text>
-        Your Pumasi Sign session has ended.
-        <p class="text-caption text-medium-emphasis mt-3 mb-0">
-          You're still signed in to Microsoft in this browser, so signing in
-          again won't ask for a password. To switch accounts,
+      <h1 class="text-h5 font-weight-bold text-slate-900 mb-2">You've signed out</h1>
+      <v-card-text class="pt-0">
+        <p class="text-body-1 text-slate-700 mb-3">
+          Your Pumasi Sign session has ended securely.
+        </p>
+        <p class="text-caption text-medium-emphasis mb-0">
+          You're still signed in to your single sign-on provider in this browser. To switch accounts,
           <a :href="microsoftLogoutUrl">sign out of Microsoft</a> first.
         </p>
       </v-card-text>
-      <v-card-actions class="justify-center">
-        <v-btn color="primary" variant="flat" :href="signInUrl" prepend-icon="mdi-login">Sign in again</v-btn>
+      <v-card-actions class="justify-center pt-3 pb-2">
+        <v-btn color="primary" variant="flat" size="large" :href="signInUrl" prepend-icon="mdi-login" class="px-6 text-none font-weight-bold">
+          Sign in again
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-container>
