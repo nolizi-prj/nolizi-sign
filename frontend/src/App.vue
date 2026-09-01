@@ -47,12 +47,18 @@ async function logout(): Promise<void> {
         >
           Templates
         </v-btn>
-        <v-btn variant="text" prepend-icon="mdi-palette-outline" :to="{ name: 'branding' }">
-          Branding
-        </v-btn>
-        <v-btn v-if="auth.isAdmin" variant="text" prepend-icon="mdi-account-group" :to="{ name: 'admin-users' }">
-          Users
-        </v-btn>
+        <v-menu location="bottom end">
+          <template #activator="{ props }">
+            <v-btn variant="text" prepend-icon="mdi-cog-outline" v-bind="props">
+              Settings
+              <v-icon icon="mdi-chevron-down" end size="16" />
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="200" elevation="2" rounded="lg">
+            <v-list-item prepend-icon="mdi-palette-outline" title="Branding & Design" :to="{ name: 'branding' }" />
+            <v-list-item v-if="auth.isAdmin" prepend-icon="mdi-account-group" title="Team & Users" :to="{ name: 'admin-users' }" />
+          </v-list>
+        </v-menu>
         <span class="mx-3 d-none d-sm-inline text-truncate app-username">{{ auth.me.name }}</span>
         <v-btn variant="text" prepend-icon="mdi-logout" @click="logout">Logout</v-btn>
       </template>

@@ -125,7 +125,7 @@ async function save() {
 
           <div class="mb-6">
             <label class="text-subtitle-2 font-weight-bold d-block mb-2">Primary Brand Color</label>
-            <div class="d-flex flex-wrap gap-2 mb-3">
+            <div class="d-flex flex-wrap mb-3" style="gap: 8px;">
               <v-btn
                 v-for="preset in COLOR_PRESETS"
                 :key="preset.hex"
@@ -133,6 +133,7 @@ async function save() {
                 variant="flat"
                 :style="{ backgroundColor: preset.hex, color: '#ffffff' }"
                 @click="primaryColor = preset.hex"
+                class="mr-2 mb-2 text-none"
               >
                 <v-icon v-if="primaryColor.toLowerCase() === preset.hex.toLowerCase()" icon="mdi-check" start size="16" />
                 {{ preset.name }}
