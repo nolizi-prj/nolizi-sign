@@ -3,8 +3,8 @@
 **Owned by the product-manager role** ([`pumasi-ops/roles/product-manager.md`](https://github.com/pumasi-ai/pumasi-ops/blob/main/roles/product-manager.md), duty 5).
 First pass 2026-08-30, steward-directed: *"introduce very similar UI and UX
 [to the incumbent] in pumasi sign — let these items in the queue."*
-**Reordered 2026-08-31 (fourth reorder)** after the product evaluation that
-re-measured this file against `main` @ `f7c8d03`; the reasoning is in that
+**Reordered 2026-09-01 (fifth reorder)** after the product evaluation that
+re-measured this file against `main` @ `56a8bf8`; the reasoning is in that
 commit's message, and the steward vetoes by reverting.
 
 One list, features and bugs together, because a priority that cannot compare
@@ -12,168 +12,135 @@ them is not a priority. Every entry points at its source and carries one line
 of why-here. **The top of this file is what the project manager's next coder
 packet builds.**
 
-**Why this reorder exists, and the first reason is this file's own defect.**
-Until this commit, item 1 argued its case from the number **2** — *"the number
-is **2**. Both assertions are against one file"* — and quoted
-`# pass 2 · # fail 0` and `assert-service-suite-ran: 2 passing, 0 failing,
-from 2 compiled`. **That number was retired by the two deliveries this file
-had not caught up with.** Re-run by this evaluation at `f7c8d03`, not
-inherited and not copied from the packet that prompted it:
+## Why this reorder exists
+
+**Item 1 was delivered, and the sentence it argued from was disproved by the
+delivery.** Both halves matter and the second is the one a register learns
+from.
+
+### The delivery, verified here rather than read off the decision entry
+
+Coder job `0058` merged `68e5d08` and `56a8bf8`. Re-read in
+`service/src/durable.ts` at `56a8bf8` by this evaluation:
+
+| Route | Guard | Line **now** | Line the entry cites |
+| :--- | :--- | :--- | :--- |
+| `cancel` | `if (isTerminal(sub.status)) return json({ error: 'This envelope is already closed' }, 409)` | **`:1252`** | `:1239` |
+| `complete` | `if (isTerminal(submission.status))` → `410` | **`:1452`** | `:1434` |
+| `decline` | `isTerminal` → `409`, then `me.status === 'signed'` → `409`, then `!submitterTurn(me)` → `409` | **`:1513`** | `:1490` |
+
+One predicate, `isTerminal`, at `:109`. In all three routes the guard is the
+**first statement of the branch**, before the request body is read, so a
+refusing path writes nothing and audits nothing. **The line numbers in
+`pumasi/DECISIONS.md` Q-031 are the pre-fix ones**; they are correct as a
+record of the defect and will not locate the repair. That is recorded rather
+than corrected in place — Q-031's text is not this seat's to edit.
+
+### The sentence this file got wrong
+
+Item 1 argued, in this file's own words:
+
+> So the omission mostly produces the **wrong refusal** — *"Already signed"*
+> (409) where the other terminal states give *"no longer active"* (410) —
+> rather than a wrong write.
+
+**That was false, and the work it ranked is what disproved it.** The reasoning
+behind it was that `if (me.status === 'signed')` catches the reachable cases,
+because an envelope only completes once every non-CC signer is `signed`.
+**The quantifier was the error.** `durable.ts`'s completion count reads
+`AND is_cc = 0`, so a **CC recipient's** status is still `pending` when the
+envelope completes. That recipient passes both guards, reaches `finalize()` a
+second time, writes a **second** `completed` audit event, and where a PDF is
+present re-stamps the executed document. A reachable wrong write, not a wrong
+refusal code.
+
+**Where the measurement lives:** `spec/0006/SPEC.md` **§S1a** states the
+correction and names this file as the register that had it wrong; frozen case
+**A-406** in `service/src/test/envelope-lifecycle.test.ts` is the measurement —
+it asserted the second completion event and the count was `2`. `spec/0005`
+§S6.4 had it right before this file did. The builder did not edit this entry,
+correctly, and handed the correction up in its return block; it is taken here.
+
+**What is *not* claimed, because the delivery was careful about this and so is
+this file.** [`VALUE.md`](VALUE.md) **C1** is **not** falsified: the stamped
+PDF and its audit certificate live in R2 and a status overwrite does not touch
+them. What was damaged is narrower and still real — the Durable Object row and
+the audit log came to say `cancelled` about an envelope whose certificate says
+`completed`. One product, two records, one claim: **L-009** at row scale.
+
+### Re-measured before re-ranked, with the number of runs behind each figure
+
+Per [`STAGE.md`](STAGE.md) §0 rider (a), run by this seat at `56a8bf8` on
+2026-09-01, not inherited and not copied from the packet:
 
 ```
 $ npm test          # = pumasi/tools/gate.sh step 1, repository root
-Test Files  6 passed (6)
-     Tests  85 passed (85)
-# pass 21
-# fail 0
-assert-service-suite-ran: 21 passing, 0 failing, from 4 compiled
+Test Files  6 passed (6)          # 2 runs read
+     Tests  85 passed (85)        # 2 runs read
+# pass 21                         # 4 runs
+# fail 0                          # 4 runs
+assert-service-suite-ran: 21 passing, 0 failing, from 4 compiled   # 3 runs
 ```
 
-**21 from four files, not 2 from two.** `service/src/test/` now holds
-`auth-session.test.ts` (job `0046`, `spec/0004`), `envelope-lifecycle.test.ts`
-(job `0050`, `spec/0005`), `stamping.test.ts` and `e2e-workflow.test.ts`. A
-register that argues from a measurement its own delivery retired is the exact
-failure the `pumasi-web` marketing seat found on the Booking card earlier
-today; it is corrected here and in [`STAGE.md`](STAGE.md) §2.1 and
-[`VALUE.md`](VALUE.md) §4 in the same commit.
+**Runs behind each figure, stated because "I ran it" without a count is what
+rider (b) exists to stop.** Root `npm test` was run **three** times and
+`service/`'s own `npm test` once, so the service assertion count rests on
+**four** runs and the guard line on **three**. The frontend figures rest on
+**two** runs read: a third root run produced them but its output was truncated
+before capture, and a figure nobody read is not a run. All identical; no
+determinism claim is made from four runs and none is needed here.
 
-**The second reason is that the last delivery found three defects and could
-not rank them.** Job `0050` characterized the envelope lifecycle and handed
-this seat five proposals plus one decision it explicitly declined to make.
-Three of those become entries here; the decision is answered in item 1.
+**The number did not move, and that is the point.** 21 across four files, the
+same as the fourth evaluation measured at `f7c8d03` and the same as job `0058`
+measured either side of its own repair. **The release closed a defect and
+widened no coverage.** A defect closed is not breadth gained, and this reorder
+does not treat it as any.
 
-**What moved.**
+### What moved
 
-- **New item 1** — the three unguarded envelope transitions. It carries the
-  `cancel` answer job `0050` was blocked on.
-- **New item 2** — `expires_at` does nothing on the served tree, while the
-  shipped UI tells the sender in words what setting it means.
-- **Old item 1 → item 3.** Widening the deployed tree's tests **is not
-  retired and is not exhausted** — but the sharpest half of its case is spent.
-  Its complaint was never "two" as a number; it was that both assertions hit
-  one pure function and that `durable.ts` was covered by nothing. Two of its
-  three named slices' worth of that is now false: sessions and the envelope
-  surface are exercised against a real Durable Object. What remains is breadth,
-  and breadth ranks below two defects the same tests found.
-- **Old item 2 → item 4, and it absorbs two new reports.** Issues
-  [#10](https://github.com/pumasi-ai/pumasi-sign/issues/10) and
-  [#11](https://github.com/pumasi-ai/pumasi-sign/issues/11) (both `accepted`,
-  `priority: normal`, triaged this pass) join #6. All three are small
-  presentation defects and two of the three are on the screen in the
-  reporters' own screenshots; one packet should take them together.
-- Old items 3, 4, 5 → **5, 6, 7**, unchanged in substance. Old items 6–16 →
-  **8–18**, untouched; the parity mandate still resumes at what is now item 8.
+- **Old item 1 → Retired**, with the struck sentence recorded rather than
+  deleted.
+- **Old items 2–7 → 1–6**, unchanged in substance except where re-verification
+  changed a fact. Old item 2 (`expires_at`) is the new **item 1** and its text
+  now says what it is blocked on, which is not what the last reorder implied.
+- **New item 7 — `RISK_ZONES.yaml`**, which this repository does not have.
+  Ranked seventh, and the reasoning is in the entry because the packet asked
+  for it there rather than in a commit message.
+- **Old items 8–18 keep their numbers.** The parity mandate still resumes at
+  item 8.
+
+### Re-verification, and what is labelled rather than claimed
+
+`0058` touched `service/src/durable.ts` and `spec/`, so every entry citing a
+line number in either was suspect. **Re-read in the tree at `56a8bf8` by this
+evaluation:** item 1's `grep` for `scheduled|triggers|crons` (still no
+matches), item 2's `e2e-workflow.test.ts` imports (still four, still no route,
+no worker, no store), item 3's `#6`/`#10`/`#11` surfaces, item 4's
+`FeedbackDialog.vue` capture, item 5's three `package.json` files, item 6's
+router table. **Re-measured against the live host** at 2026-09-01 00:29 UTC:
+the deployed bundle is still `/assets/index-j38Qwibz.js` and
+`GET /api/auth/login?next=%2F` is still `404`, so **B1 and B2 are confirmed,
+not carried.** Everything else in items 8–18 is *carried, not confirmed* —
+those entries cite a design spec, not this tree.
 
 **`PRODUCT-RULES.md`, read fresh this packet and reported rather than assumed.**
-It is **still not on `pumasi` main** — checked at `pumasi` @ `133d337`:
-`ls PRODUCT-RULES.md` → *No such file or directory*, and
-`git log --all -- PRODUCT-RULES.md` finds it on one commit, `0115758`, on the
-unmerged branch `worktree-product-rules`. That is **Q-017**, open, now flagged
-by six consecutive evaluations, and **absence from main is not compliance**.
-Read from that branch this pass: v1.0, PR-1 (version numbers, binds always)
-and PR-2 (in-app feedback, binds at `beta`) are unchanged from the last
-reading. Both gaps stay ranked, at items 6 and 5 respectively.
+Still **not on `pumasi` main** — checked at `pumasi` @ `3bc1822`:
+`ls PRODUCT-RULES.md` → *No such file or directory*, and it exists on one
+commit, `0115758`, on the unmerged branch `worktree-product-rules`. That is
+**Q-017**, open, now flagged by **seven** consecutive evaluations, and
+**absence from main is not compliance**. Read from that branch this pass: v1.0,
+PR-1 (version numbers, binds always) and PR-2 (in-app feedback, binds at
+`beta`) unchanged from the last reading. Both gaps stay ranked, now at items 5
+and 4 respectively.
 
 ---
 
 ## The order
 
-**1 · Repair the three unguarded envelope transitions — and the `cancel`
-question is answered here** — source: coder job `0050`'s `SUGGESTED_NEXT_TASKS`
-(`priority: high`), `spec/0005`, frozen cases **A-404**, **A-406** and
-**A-407** in `service/src/test/envelope-lifecycle.test.ts`.
-**This is what the next coder packet takes.**
-
-**The three gaps, re-read in `service/src/durable.ts` at `f7c8d03` by this
-evaluation rather than taken from the job that reported them:**
-
-- **`:1240`–`:1244` — `cancel` has no status guard at all.**
-  `UPDATE submissions SET status = 'cancelled'` runs unconditionally, and
-  `this.audit(sub.id, 'cancelled', …)` appends an event. A `completed`,
-  `declined` or already-`cancelled` envelope is overwritten and audited again.
-- **`:1434`–`:1436` — `complete` guards `cancelled` and `declined` (410) and
-  omits `completed`.** Stated with its mitigation, because a packet should not
-  over-read it: the next line, `if (me.status === 'signed') return … 409`,
-  catches most of the reachable cases, since an envelope is only `completed`
-  once every non-CC signer is `signed`. So the omission mostly produces the
-  **wrong refusal** — *"Already signed"* (409) where the other terminal states
-  give *"no longer active"* (410) — rather than a wrong write. Fix it for the
-  consistency, and do not describe it in the release note as a hole it is not.
-- **`:1490`–`:1500` — `decline` carries none of `complete`'s three guards, and
-  this is the worst of the three.** No terminal-status check, no
-  `me.status === 'signed'` check, no `submitterTurn` check. A signer who has
-  **already signed** can then decline; a **completed** envelope flips to
-  `declined`; and `mailOrLog` tells the sender their executed agreement was
-  declined. The same envelope can refuse a signature with 410 and accept a
-  decline with 200.
-
-### The decision job `0050` asked for: `cancel` **refuses** a terminal envelope
-
-**Answer: refuse, with `409`.** `cancel` returns
-`{ error: … }, 409` when the envelope's status is `completed`, `declined` or
-`cancelled`, writes nothing and audits nothing. The same treatment applies to
-`decline`. Four grounds, in the order they actually decided it:
-
-1. **The product already refuses this, in the shipped UI, and the API is what
-   disagrees.** `frontend/src/views/EnvelopeDetailView.vue:676` renders the
-   *"Void envelope"* button inside
-   `v-if="canManage && (submission.status === 'pending' || isDraft) && !stuck"`.
-   There is **no path through the product** by which a user voids a `completed`
-   envelope today. And `decline` is stronger still: this evaluation grepped
-   `frontend/src/` for `decline` at `f7c8d03` and found **no call site at all**
-   — the word appears only in type unions and in labels that *display* the
-   status. Both routes are API-only surfaces.
-2. **Therefore this is a plain defect, and it is ranked, not escalated.** The
-   packet asked this seat to escalate if the answer changes what the product
-   promises a signer. It does not: refusing removes **no capability any user
-   can reach**, and it makes the API agree with a rule the frontend has been
-   enforcing all along. What *would* be a promise change is the opposite answer
-   — deciding that voiding-after-completion is a legitimate capability — and
-   nobody has proposed it. Ranking it here is the reversible move; if a sender
-   ever does need to void an executed agreement (signed in error, superseded),
-   that is a **new capability** with its own button, its own audit event and
-   its own name, designed on purpose rather than falling out of a missing
-   `WHERE` clause.
-3. **Refusal is this file's own idiom.** Every neighbouring transition that
-   guards, guards by refusing: `remind` returns 409 *"This envelope is not
-   awaiting signatures"* (`:1231`), `complete` returns 410, `A-403` already
-   records that send and remind refuse on all three terminal states **and write
-   nothing**. Overwriting is the outlier, not the convention.
-4. **What it protects is the audit trail, not the artifact — and the
-   difference matters.** [`VALUE.md`](VALUE.md) **C1** promises a cryptographic
-   record of what was signed; the stamped PDF and its certificate live in R2
-   and a status overwrite does not touch them. **So C1 is not falsified today**
-   (recorded in `VALUE.md` §5 this pass) and a packet should not claim it was.
-   What the overwrite does damage is narrower and still real: the Durable
-   Object row and the audit log come to say `cancelled` about an envelope whose
-   certificate says `completed` — one product, two records, one claim, which is
-   [L-009](https://github.com/pumasi-ai/governance/blob/main/lessons/L-009-two-paths-one-claim.md)'s
-   shape at row scale.
-
-### Say this in the open, or the next coder will look like it edited a frozen test
-
-**`A-404`, `A-406` and `A-407` assert today's behaviour on purpose.** A-404 is
-named *"cancel has no status guard: it overwrites a completed, declined or
-already-cancelled envelope and audits again"* and A-407 *"…decline has no
-status guard where complete has one"*. **A correct repair turns them red.**
-That is the intended outcome, not a regression and not a coder taking liberties
-with a frozen case: `spec/0005` §S4a already provides for amending them in the
-open. The packet that takes this item **amends those three cases in the same
-commit as the repair**, states in its intent that it is doing so, and leaves
-each amended case asserting the *new* guard rather than deleting it. If a
-reviewer sees a frozen case edited without that sentence, the objection is
-correct — which is why the sentence is here.
-
-**Why here.** It is the only entry in this file that is a live data-integrity
-defect in the tree that serves users, the tests that characterize it already
-exist, the fix is small and bounded, and it was blocked on one product decision
-that this commit answers. Ranked above item 2 only because it is ready and
-item 2 needs infrastructure designed.
-
-**2 · Make `expires_at` do what the UI already tells the user it does** —
+**1 · Make `expires_at` do what the UI already tells the user it does** —
 source: coder job `0050`'s proposal 3 and frozen case **A-409**; `CLAUDE.md:107`–`:110`.
 
-**The gap, measured at `f7c8d03`.** `CLAUDE.md` names `expired` as one of six
+**The gap, re-measured at `56a8bf8` by this evaluation and unchanged.** `CLAUDE.md` names `expired` as one of six
 submission statuses, *"past its optional `expires_at` deadline — flipped by the
 daily job"*. There is no daily job on the worker:
 
@@ -237,16 +204,54 @@ this role's duty 1 defines as escalation ground. **This seat is not raising a
 or a later evaluation prefers (B), it needs one first, with the UI-copy cost
 above named in it rather than discovered afterwards.
 
-**Why here.** Every sender who sets a deadline is affected — no direct API call
-required, unlike item 1 — but the fix needs designing, so it sits below the
-repair that is ready to build.
+**Why here, and what it is and is not blocked on — stated in this entry rather
+than left for a packet to discover.** Every sender who sets a deadline is
+affected, and no direct API call is required, unlike the transition repair that
+was item 1. With that repair delivered at `68e5d08`, this is the highest-ranked
+**build** entry in the file.
 
-**3 · Test the deployed tree beyond its stamper — the breadth that is left**
+**It is not blocked on a steward decision.** The product choice this entry
+turns on — **(A)** the scheduled handler over **(B)** withdrawing the promise —
+was made by the fourth reorder, is unvetoed, and stands. No `DECISIONS.md`
+window gates it: unlike **B1** and **B2** below, nothing here waits on Q-012 or
+Q-021. A coder packet may take it today.
+
+**It is blocked on design, in the ordinary sense that it adds infrastructure
+that does not exist**, and that is why the packet taking it runs the full
+charter flow — intent → spec + frozen tests → build — rather than a patch. Four
+things have to be decided *in the spec*, by the builder, with named defaults,
+and none of them is a steward act:
+
+1. **The cron cadence.** `backend/`'s precedent is daily at 09:00 UTC; nothing
+   requires the worker to match it, and Q-018 means that tree may be read for
+   shape but not treated as the answer.
+2. **The sweep's entrypoint.** A `scheduled` export in `worker.ts` has to reach
+   a Durable Object, and every envelope lives in one — how the sweep enumerates
+   them is the real work in this item and there is no existing pattern in
+   `service/` to copy.
+3. **Whether an expiry notifies anyone.** The SPA promises the envelope stops
+   being signable; it promises nobody an email. Silence is the smaller
+   commitment and is the honest default.
+4. **The audit event.** `expired` is a status the audit log has never carried;
+   it needs a name, and the same `isTerminal` question as item 1's repair — an
+   expired envelope should refuse the same transitions a completed one does.
+
+**And it is `can_hurt` under CHARTER Part 4**, which a packet should plan for
+rather than discover at the gate: the sweep decides that a real person may no
+longer sign an agreement, and if (3) resolves toward notifying, it sends mail on
+a sender's behalf. **This repository has no `RISK_ZONES.yaml`** (item 7), so
+Part 4's own rule applies — *unmapped or unclear defaults to `can_hurt`* — and
+the classification is settled by that default without anyone reasoning it out.
+That is the whole reason item 7 ranks where it does; see its entry.
+
+
+**2 · Test the deployed tree beyond its stamper — the breadth that is left**
 — source: coder job `0032`'s `SUGGESTED_NEXT_TASKS` (`priority: high`),
 `pumasi/DECISIONS.md` **Q-018** and **Q-025**, [`STAGE.md`](STAGE.md) §2.1,
 `CLAUDE.md` (*"test coverage here is thin and you should know it before you
-trust it"*). **Was item 1. Not retired, and demoted on delivery rather than
-silently.**
+trust it"*). **Was item 3, and item 1 before that. Not retired, and demoted
+on delivery rather than silently — it has now been passed twice by defects its
+own coverage found.**
 
 **What its three named slices delivered, verified in the tree this pass.** The
 entry proposed, in order: `establishSession`'s account rule, then session
@@ -257,7 +262,9 @@ validation, then envelope state transitions. **All three are in.**
 **A-302**, *"establishSession admits a verified email at any domain — recorded,
 not endorsed"*. That is the entry's own boundary honoured exactly:
 **characterize, do not adjudicate.** `envelope-lifecycle.test.ts` (A-400–A-409)
-covers the transitions and is what found items 1 and 2 of this file.
+covers the transitions and is what found the two defects that became items 1
+and 2 of the fourth reorder — the first of which is delivered and retired below,
+the second of which is now this file's item 1.
 
 **So the two sharpest sentences this entry used to carry are now false and are
 withdrawn**, rather than left to read as pending:
@@ -267,7 +274,8 @@ withdrawn**, rather than left to read as pending:
 - ~~"`durable.ts` … covered by nothing"~~ — sessions and the envelope surface
   are covered.
 
-**One sentence survives verbatim, re-checked at `f7c8d03`:**
+**One sentence survives verbatim, re-checked in the tree at `56a8bf8` by this
+evaluation:**
 `e2e-workflow.test.ts` **is still not an end-to-end test of anything.** Its
 imports are `node:test`, `node:assert/strict`, `pdf-lib` and
 `stampAndCertifyPdf` — identical to `stamping.test.ts` — and it calls no route,
@@ -279,7 +287,9 @@ takes this item.
 **What is left, and a packet should say which strand it takes.**
 
 - **Named first slice — the OAuth callback, which is where job `0050`'s
-  proposal 5 lives.** Verified by this seat at `service/src/durable.ts:766`:
+  proposal 5 lives.** Verified by the fourth evaluation at `service/src/durable.ts:766`; `0058` moved
+lines in this file, so the number is **carried, not confirmed** — the guard
+itself was re-read and is unchanged:
   the guard is `claims.email_verified === false`, so an `id_token` that
   **omits** the claim passes. Stated at the strength the evidence supports and
   no higher: this is on an **uncovered branch**, proposed from source with no
@@ -306,21 +316,29 @@ A test that records what the worker does is ordinary work; a test written to
 assert the worker's account rule is the *correct* one answers **Q-018**, which
 is the steward's. A-302 is the model.
 
-**4 · Three small presentation defects, one packet — #6, #10 and #11** —
+
+**Why here, and it is second rather than third only because the entry above it
+was delivered.** It gained no ground at `68e5d08`: that release **widened no
+coverage** — the gate prints the same 21 assertions it printed before, from the
+same four files — so nothing in this entry closed. Breadth still ranks below
+the one remaining defect on the served tree (item 1), and above everything no
+user has reported.
+
+**3 · Three small presentation defects, one packet — #6, #10 and #11** —
 source: issues [#6](https://github.com/pumasi-ai/pumasi-sign/issues/6),
 [#10](https://github.com/pumasi-ai/pumasi-sign/issues/10) and
 [#11](https://github.com/pumasi-ai/pumasi-sign/issues/11) — all three
-`accepted`, all three `priority: normal`; #10 and #11 triaged by this
-evaluation, #6 carried from the last. **Was item 2; it absorbs the two new
-reports rather than opening two entries below itself.**
+`accepted`, all three `priority: normal`; #10 and #11 triaged by the fourth
+evaluation, #6 by the one before it. **Labels re-read on the tracker by this
+evaluation** — all three still `accepted` · `priority: normal`, all three still
+open, so the intake verdicts stand and nothing is re-triaged here. **Was item 4.**
 
 **Why one entry.** Three separate users reported three defects that are all
 small, all presentational, and two of which are visible in the same committed
 screenshot. Splitting them costs three packets and three review cycles for what
 is one afternoon in `frontend/`.
 
-- **#6 — inert `gap-*` classes on three views.** Re-measured at `f7c8d03` and
-  unchanged: this frontend has no Tailwind — Vuetify `^3.13.0` only, whose
+- **#6 — inert `gap-*` classes on three views.** Re-measured at `56a8bf8` and unchanged: this frontend has no Tailwind — Vuetify `^3.13.0` only, whose
   utility is `ga-*`. `.ga-2` is in `vuetify.css` and `.gap-2` is not.
   `BrandingView.vue:113`, `:128`, `:142` (the reported surface);
   `LoginView.vue:119`; and `LandingView.vue` (`:41`, `:48`, `:53`, `:90`),
@@ -358,12 +376,13 @@ Note that the last reorder ranked #6 partly on riding along with the #7 fix,
 and that ride was spent at `d18d534` — it stays high on its own size and on
 having acquired two companions, not on a shared deploy.
 
-**5 · The feedback screenshot must be attached, not pre-attached** — source:
+
+**4 · The feedback screenshot must be attached, not pre-attached** — source:
 `PRODUCT-RULES.md` **PR-2** (v1.0, read fresh this packet from `pumasi` branch
-`worktree-product-rules` `0115758`; **still not on `pumasi` main** — that is
-**Q-017**, now flagged by six consecutive evaluations, and absence from main
-is not compliance), CHARTER §5.2.
-Re-checked at `f7c8d03` and **unchanged**: opening the dialog sets a fallback
+`worktree-product-rules` `0115758`; **still not on `pumasi` main** — checked at
+`pumasi` @ `3bc1822`; that is **Q-017**, now flagged by **seven** consecutive
+evaluations, and absence from main is not compliance), CHARTER §5.2.
+Re-read in the tree at `56a8bf8` by this evaluation and **unchanged**: opening the dialog sets a fallback
 canvas as the attachment immediately (`FeedbackDialog.vue:185`–`:189`,
 `screenshotIsAuto.value = true`) and then replaces it asynchronously with a
 real `html2canvas(document.body)` capture (`:193`–`:197`). The user presses
@@ -376,9 +395,10 @@ the only clause it fails, and it is cheaper to fix now than to hold a promotion
 for. **This is the deployed behaviour, not a branch one** — the feedback widget
 that produced issues #4–#9 is the one live on `sign.pumasi.ai`.
 
-**6 · One version number, and put it in the reports** — source:
+
+**5 · One version number, and put it in the reports** — source:
 `PRODUCT-RULES.md` **PR-1**, which binds *always, from the first commit*, and
-is not met. Re-measured at `f7c8d03` and unchanged: the root `package.json` carries **no
+is not met. Re-measured at `56a8bf8` by this evaluation and unchanged: the root `package.json` carries **no
 `version` field**; `frontend/package.json` reads `0.0.0` and
 `service/package.json` reads `0.1.0` (two hand-maintained copies — L-007); no
 version is visible to a user anywhere in the SPA; there is no `/version`
@@ -397,15 +417,85 @@ precisely so that "a later packet cannot take it in passing"
 retire or amend A-208 in the same commit, and should say so in its intent.
 That is a small, stated cost, not a blocker.
 
-**7 · A settings shell, with branding inside it** — source: issue
+
+**6 · A settings shell, with branding inside it** — source: issue
 [#5](https://github.com/pumasi-ai/pumasi-sign/issues/5) (`accepted`,
 `priority: normal`); pulled out of item 17 (spec §8), which keeps the rest.
-There is no `settings` route and `/branding` is top-level
-(`router/index.ts:70`, `App.vue:50`). Ship the shell and move branding under
+There is no `settings` route and `/branding` is top-level — re-read at
+`56a8bf8`, where the route table has moved to `router/routes.ts:69`–`:70`
+(`path: "/branding"`, `name: "branding"`) and the last reorder's
+`router/index.ts:70` no longer locates it. Ship the shell and move branding under
 it; the account defaults, notification preferences and retention controls that
 fill it stay in item 17. Why here: it is the container every later
 settings-shaped item needs, and shipping it early stops each of them inventing
 its own home.
+
+
+**7 · Classify this repository's paths — the `RISK_ZONES.yaml` that does not
+exist** — source: `pumasi/DECISIONS.md` **Q-031**'s own *Risk class* row, which
+reports the absence, and CHARTER **Part 4**. **New in this reorder.** It is a
+build; this seat ranks it and does not write it.
+
+**The gap, measured rather than reported.** `ls RISK_ZONES.yaml` in this
+repository → *No such file or directory*, confirmed by this evaluation at
+`56a8bf8`. CHARTER Part 4 says the classification *"lives in `RISK_ZONES.yaml`
+in each repository, is one boolean per path, and defaults to **can hurt
+someone** when unmapped or unclear."*
+
+**The cost of the absence is on the record and is exactly one paragraph.** Job
+`0058` had to apply Part 4's table by hand to classify Q-031, and said so
+inside the decision entry rather than hiding it: *"`pumasi-sign` carries no
+`RISK_ZONES.yaml` (checked, not assumed), so CHARTER Part 4's table was applied
+directly."* It reached the right answer — `can_hurt` — and the reasoning is
+auditable. The next such release repeats the work, and the release after that
+may reason to a different answer, which is the actual risk here.
+
+**Why it ranks seventh and not higher — the packet asked for this reasoning
+here, so here it is.**
+
+1. **The charter's default already fails safe, and that is decisive.** An
+   absent file cannot cause *under*-classification: *unmapped or unclear
+   defaults to can hurt someone*, and Part 4 adds that *"guessing wrong in the
+   safe direction costs one extra review."* So the whole harm this file
+   prevents is an over-classification tax and an inconsistency between two
+   seats' hand-reasoning. Every entry above it addresses something that is
+   wrong in a direction the system does **not** correct on its own.
+2. **It serves no user.** Items 1 and 2 are a broken promise and the coverage
+   that would catch the next one; item 3 is three defects three people
+   reported; items 4 and 5 are `PRODUCT-RULES.md` clauses that bind. This is
+   process infrastructure. It is worth doing and it is not worth doing first.
+3. **It is small, which cuts both ways.** Half an hour of work is a weak reason
+   to rank something high and a good reason not to leave it undone before a
+   long feature run — which is why it sits immediately above item 8, where the
+   parity mandate resumes and several entries will be `can_hurt`.
+
+**The precedent is not what it was described as, and a packet should know
+before copying it.** The report that prompted this entry says `pumasi-booking`
+has a `RISK_ZONES.yaml`. Read directly at `pumasi-booking` @ `2453adc`, it has
+**two** — `core/spec/RISK_ZONES.yaml` and `service/spec/0002/RISK_ZONES.yaml` —
+and **neither is at the repository root Part 4 names**. Both are scoped to a
+spec item. No other repository in the fleet has one at all (`pumasi`,
+`pumasi-web`, `pumasi-ops` and `pumasi-tunnel` checked, none tracked). So
+*"the classification lives in `RISK_ZONES.yaml` in each repository"* is
+currently true of no repository.
+
+**This entry does not raise a `DECISIONS.md` question about that**, because it
+does not need one: Part 4's words name the repository root, and booking's
+nesting is a deviation rather than an authority. **Put the file at the root.**
+Record the divergence from booking in the commit rather than silently matching
+either shape.
+
+**What the file should say, and why it is nearly a one-liner.** Booking's
+service-level file is the useful precedent for its *content*: `can_hurt: "*"`
+with a stated reason, on the grounds that the service holds third parties'
+personal data and acts on their behalf. `service/` here is the same shape and
+stronger — it holds signers' names, email addresses, IP addresses, user agents,
+signature images and the documents they signed, it sends mail on a sender's
+behalf, and it writes the audit record of a legal act. Enumerating exceptions
+inside it would be looking for loopholes in our own risk model. `backend/` is
+the harder call and **the packet must not answer Q-018 by classifying it** —
+recording that it serves no user is a fact; concluding it therefore does not
+matter is the steward's.
 
 **8 · Focus-mode shells for prepare / tag / sign** — source: spec §1
 (shell 2). Full-screen wizard and signing surfaces: global chrome hidden,
@@ -477,7 +567,7 @@ still small.
 regional formats), per-user notification preferences, envelope/document custom
 metadata, retention purge, combined-into-one-PDF + zip download, certificate
 depth (per-signer viewed timestamps, security level, adoption method), a
-Reports section. **The settings *shell* was pulled out as item 7**; this is
+Reports section. **The settings *shell* was pulled out as item 6**; this is
 everything that goes inside it. Retention here is also what
 [`STAGE.md`](STAGE.md) §2.4 needs to make a data-survival claim citable. Why
 here: nothing user-visible upstream depends on it.
@@ -524,8 +614,13 @@ and **neither is released by CHARTER Part 0**:
   would carry ~6 commits of otherwise-unreviewed change; it should be
   deliberate, not incidental.
 
-**Verified undeployed again this tick, not inherited from job `0024`.** The
-live bundle filename is unchanged, which is itself the finding:
+**Verified undeployed again this tick, not inherited.** Re-`curl`ed by the
+fifth evaluation on 2026-09-01 at 00:29 UTC: the live bundle is still
+`/assets/index-j38Qwibz.js` — the same filename the fourth evaluation recorded,
+and the same one recorded before that. The route-table extraction below is the
+fourth evaluation's and is **carried, not re-extracted**; the filename it was
+taken from was re-confirmed, so nothing in it can have changed. The original
+measurement:
 
 ```
 $ curl -s https://sign.pumasi.ai/ | grep -o '/assets/[^"]*\.js'
@@ -583,6 +678,16 @@ function ml(e){return`/login?next=`+encodeURIComponent(e)}
 That is not an inference from a filename. It is the removed code, still
 shipping.
 
+**Re-measured by the fifth evaluation on 2026-09-01 at 00:29 UTC**, not
+carried: `curl -s https://sign.pumasi.ai/ | grep -o '/assets/index-[^"]*\.js'`
+still returns `/assets/index-j38Qwibz.js`, and
+`GET https://sign.pumasi.ai/api/auth/login?next=%2F` still answers **404**.
+Nothing has deployed. Note what this does and does not prove about `68e5d08`:
+it establishes that **no deploy has carried a `frontend/dist` built at or after
+`d18d534`**, which is the same bundle that would have to carry the envelope
+guards, since `wrangler.jsonc` serves `../frontend/dist` and the worker ship
+together. Q-031's own Status line says the same thing from the builder's side.
+
 **Blocked on two entries, not one, and the second one is the finding.**
 
 - **Q-012** — who carries a merged build to users — open, and explicitly
@@ -606,6 +711,58 @@ a broken sign-in button.
 ---
 
 ## Retired
+
+**~~Repair the three unguarded envelope transitions~~ — delivered 2026-08-31
+at `68e5d08`** (coder job `0058`, `spec/0006`, `pumasi/DECISIONS.md` **Q-031**,
+7-day can-hurt window open, closes **2026-09-07**). **Was item 1.** Verified in
+the tree at `56a8bf8` by this evaluation rather than taken from the decision
+entry — the guards, their status codes and their current line numbers are in
+the table at the top of this file. All three refuse before reading the request
+body, so a refusing path writes nothing and audits nothing, and one predicate
+(`isTerminal`, `durable.ts:109`) backs all three.
+
+**This entry is retired with its own wrong sentence recorded, not deleted.**
+The struck sentence, and it was this file's ranking argument for treating
+`complete` as the least of the three:
+
+> ~~So the omission mostly produces the **wrong refusal** — *"Already signed"*
+> (409) where the other terminal states give *"no longer active"* (410) —
+> rather than a wrong write.~~
+
+**What disproved it:** the CC recipient. The reasoning rested on an envelope
+only completing once every non-CC signer is `signed`, but the completion count
+reads `AND is_cc = 0`, so a CC recipient is still `pending` at completion,
+passes both guards, re-enters `finalize()` and writes a second `completed`
+audit event — re-stamping the executed PDF where one is present. A reachable
+wrong write. **Where the measurement lives:** `spec/0006/SPEC.md` **§S1a** for
+the reasoning, frozen case **A-406** for the measurement (it asserted the
+second completion event; the count was `2`), and `spec/0005` §S6.4, which had
+it right before this file did.
+
+**Two things this retirement does not claim.** It did **not** widen coverage —
+the gate prints the same 21 assertions from the same four files as before the
+release, re-run four times by this evaluation. And it did **not** falsify
+[`VALUE.md`](VALUE.md) **C1**: the stamped PDF and its certificate live in R2
+and a status overwrite never touched them. What was damaged is the row and the
+audit log disagreeing with the certificate — **L-009** at row scale.
+
+**Retired from the build order, and the defect is still live to every user.**
+Q-031's own Status line says so, and this evaluation re-measured it at
+2026-09-01 00:29 UTC: the deployed bundle is unchanged and nothing has been
+deployed. The transitions behave the old way on `sign.pumasi.ai` today. That is
+**Q-012**, not a build entry, and it is why this retirement is not a claim
+about the product users meet — see [`STAGE.md`](STAGE.md) §2.6 and §5.
+
+**Also recorded here because it belongs to this entry's history:** job `0058`
+amended frozen cases **A-404**, **A-406** and **A-407** in the open, under the
+default reading of **Q-030** (*may a builder amend a frozen acceptance case?*),
+having read that question mid-run. **Q-030 is open**, `pumasi-tunnel` reverted
+the same move under an objection, and nothing in this file pre-empts the
+steward's answer. Two objections on this product cited CHARTER Part 3
+requirement 2 against the amendment; both cite the **stale** copy of the
+charter (**Q-032**), which is a fact about the objections and not an answer to
+Q-030.
+
 
 **~~#7: "sign in again" sends the user to a raw 404~~ — delivered 2026-08-31
 at `d18d534`** (coder job `0037`, `spec/0003`, `pumasi/DECISIONS.md` **Q-027**,
@@ -651,7 +808,7 @@ evaluation by running it, not by reading it:
   the identical counts above. Details and method in [`STAGE.md`](STAGE.md) §0
   rider (b).
 
-**What is carried forward, and it is now item 3.** The gate runs the served
+**What is carried forward, and it is now item 2.** The gate runs the served
 tree. *Updated by the fourth reorder:* what it runs there is no longer "two
 assertions against one file" — it is **21 across four files** at `f7c8d03`,
 two of which drive a real Durable Object. The carried-forward complaint is
@@ -705,7 +862,7 @@ from the job's report:
 *which tree is the product* is untouched. Two successors are in the order
 above: the gate half this never covered was **the old item 2**, delivered at
 `d18d534` and retired directly below; and the thinness of what the new job
-runs is **item 3** (it was item 1 through the third reorder; the two
+runs is **item 2** (it was item 1 through the third reorder, then item 3; the two
 deliveries at `3d01198` and `f7c8d03` are why it moved).
 
 **~~Item 1(a): the `BETA` chip, and 1(c): the uncited competitor pricing~~ —

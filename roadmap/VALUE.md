@@ -131,16 +131,26 @@ project is built to notice.
 - **Not "beta," and not "reliable for strangers."** [`STAGE.md`](STAGE.md) §2
   lists **six** reasons. *Corrected 2026-08-31 (fourth evaluation):* this line
   said the largest was that the deployed tree carries **"two tests, both on the
-  PDF stamper"**, and **that is no longer true** — re-run by this seat at
-  `f7c8d03`, the served tree's suite is **21 tests across four files**, two of
-  which drive a real Durable Object (`STAGE.md` §2.1 carries the measurement
-  and the correction). What holds the label back now is different and worse:
-  the coverage that grew went and **found two unfixed defects on the served
-  tree** — envelope transitions that let an executed agreement be voided or
-  declined after the fact, and an `expires_at` the worker never acts on
-  (`STAGE.md` §2.6, `BACKLOG.md` items 1 and 2). Breadth is still missing too
-  (`worker.ts`, R2, mail, feedback, conversion, the OAuth callback), which is
-  `BACKLOG.md` item 3.
+  PDF stamper"**, and **that is no longer true** — the served tree's suite is
+  **21 tests across four files**, two of which drive a real Durable Object.
+  *Re-run 2026-09-01 (fifth evaluation) at `56a8bf8` and unchanged*, over four
+  runs: `# pass 21 · # fail 0`. `STAGE.md` §2.1 carries the measurement.
+  What holds the label back is what that coverage went and found — two defects
+  on the served tree — and **the fifth evaluation has to state their two
+  different states separately, because one was repaired and the product did not
+  change**:
+  - The **envelope transitions** that let an executed agreement be voided,
+    re-completed or declined after the fact are **fixed on `main` at
+    `68e5d08`** and **still live to every user**, because nothing has deployed
+    (re-`curl`ed 2026-09-01 00:29 UTC). `STAGE.md` §2.6(i) and §5's state
+    (iii); `pumasi/DECISIONS.md` **Q-031**, window open to 2026-09-07, and
+    **Q-012**, which owns the deploy and is open.
+  - The **`expires_at` a worker never acts on** is unfixed in source and in
+    production, and is now `BACKLOG.md` **item 1**. `STAGE.md` §2.6(ii).
+
+  Breadth is still missing too (`worker.ts`, R2, mail, feedback, conversion,
+  the OAuth callback), which is `BACKLOG.md` **item 2** — and **`68e5d08`
+  widened none of it**: a defect closed is not breadth gained.
 - **Not a QES / eIDAS-qualified signature.** The product produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware the product does not touch. (The landing page states
@@ -156,6 +166,42 @@ At every product evaluation (role duty 4): does the release just shipped
 deliver a claim above, and does any claim now have a live falsifier? A claim
 that acquires one is *demoted in this file in the same commit that finds it* —
 the same rule `STAGE.md` runs on.
+
+**Fifth evaluation, 2026-09-01, against `main` @ `56a8bf8`.**
+Release checked: [`2026-08-31-pumasi-sign-finished-envelopes-stay-finished.md`](https://github.com/pumasi-ai/pumasi/blob/main/releases/2026-08-31-pumasi-sign-finished-envelopes-stay-finished.md)
+(`pumasi/DECISIONS.md` **Q-031**, 7-day can-hurt window open, closes
+2026-09-07).
+
+- **Does it deliver a claim above? No — it repairs the near miss the fourth
+  evaluation wrote down, and that is the cleanest possible illustration of why
+  C1 was right not to be demoted.** `68e5d08` guards `cancel`, `complete` and
+  `decline` against terminal statuses. The claim it protects is not C1: it is
+  the *record around* C1's artifact — the Durable Object row and the audit log
+  no longer come to contradict a certificate that says `completed`. **C1 stood
+  as written before the fix and stands as written after it**, which is what the
+  fourth evaluation predicted in the paragraph above.
+- **Does any claim acquire a live falsifier? No.** C1–C6 re-read against
+  `56a8bf8`; nothing in either merged commit touches the stamping path, the
+  absence of a meter, branding, or `MARKET.md`'s cited rows. C5 remains
+  **suspended** under Q-021, unchanged.
+- **What the fourth evaluation got wrong about the defect, corrected here
+  because this file cited it.** The paragraph above cites `durable.ts:1240` and
+  `:1490` for `cancel` and `decline`. Those are the **pre-fix** line numbers
+  and no longer locate anything; the guards are now at `:1252`, `:1452` and
+  `:1513`, one predicate `isTerminal` at `:109`, verified in the tree at
+  `56a8bf8`. Separately, `BACKLOG.md` item 1 had described the `complete`
+  omission as *"mostly the wrong refusal code rather than a wrong write"* —
+  **false**, disproved by a CC recipient reaching `finalize()` twice
+  (`spec/0006/SPEC.md` §S1a; frozen case **A-406**). Neither error was in this
+  file's *claims*; both are recorded because this file relied on the register
+  that carried them.
+- **And the repair does not move anything this file says about maturity.** It
+  is **merged, not shipped** — re-`curl`ed 2026-09-01 00:29 UTC, the deployed
+  bundle is unchanged and the three transitions behave the old way for every
+  user of `sign.pumasi.ai`. It also **widened no coverage**: `# pass 21`,
+  identical either side, over four runs. §4 above states both.
+
+---
 
 **Fourth evaluation, 2026-08-31, against `main` @ `f7c8d03`.**
 **No release note has been published since the last evaluation**, so duty 4's
