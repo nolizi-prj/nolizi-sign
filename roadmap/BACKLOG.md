@@ -10,6 +10,11 @@ reverting.
 **Reordered again 2026-09-01 (seventh reorder)** at `c23c7e6`, a narrow pass
 triggered by one published release note; what it re-measured and what it
 carried is the next section, and the reasoning is in that commit's message.
+**Reordered again 2026-09-01 (eighth reorder)** at `efed763`, triggered by a
+merge no file here had a record of — coder job `0080` landed four commits and
+the dispatcher then recorded the job `FAILED: timed out after 5400s`. **The
+work is in `main`; only the wrap-up died**, and this reorder is the wrap-up.
+What it re-measured and what it carried is the next section.
 
 One list, features and bugs together, because a priority that cannot compare
 them is not a priority. Every entry points at its source and carries one line
@@ -21,6 +26,177 @@ operator item keeps its rank rather than being demoted for being unbuildable.
 That exception is `pumasi-booking`'s, adopted here at `2453adc`'s shape,
 because this repository has now acquired the same problem: merged repairs that
 no commit can deliver.
+
+## What the eighth reorder changed, and what it did not measure
+
+**One entry moved, three sentences in this file were false and are struck, and
+the residual strands of the top build entry are ranked for the first time.
+That is stated first so nothing below is over-read.**
+
+**Labels, and there is no unlabelled entry.** Anything marked **re-verified at
+`efed763`** was re-run or re-read by this pass at this tree or against the live
+host, with the UTC time given. **Every entry, sentence and figure in this file
+that is not so marked is `carried, not confirmed` from the seventh reorder at
+`c23c7e6`** — which is itself blanket-carried from the sixth at `2471a29` for
+everything the seventh did not touch. This pass did not re-read items 3, 4, 5,
+7 or 8–18, or B1, and does not pretend to have. The blanket form is used rather
+than seventeen copies of the same sentence, and it means exactly what the
+per-entry form means.
+
+**Why this pass exists at all, and it is not a routine tick.** `roadmap/`
+described a tree that does not exist. Job `0080` merged `af617e1` → `efed763`,
+pushed, `GATE: PASS`, and its return block says in as many words *"FOR YOUR
+STRIKE — I deliberately did not edit `roadmap/`"* — correctly, because ranking
+is this seat's. The dispatcher then killed the job on a 5400 s timeout **after**
+the push. **A job recorded `FAILED` is not evidence that the build failed**;
+this pass judged it on the tree and the tree is where the work is.
+
+**What moved.**
+
+- **Item 2's misnomer strand is struck as BUILT at `07e0188`**, not claimed as
+  delivered — nothing in it reaches a user. `e2e-workflow.test.ts` no longer
+  exists; it is `stamping-multi-signer.test.ts`.
+- **Item 2's named first slice — the OAuth callback — is struck as BUILT at
+  `07e0188`.** `service/src/test/oauth-callback.test.ts`, frozen cases
+  **A-500**–**A-506**, both provider legs, through the real Durable Object.
+- **Item 2 stays at rank 2 and stays the top *build* entry.** It did not become
+  less urgent and nothing above it was built: **item 1 is still operator action
+  and still four repairs deep.** What changed inside it is that its **three
+  residual strands are now ranked against each other, with reasons** — the
+  packet after this one should be able to read which strand it takes without
+  opening a log. They were an unordered list before.
+- **A fourth residual — the `email_verified` guard — is given a ranked home
+  inside item 2 rather than promoted out of it**, because the evidence that
+  `spec/0009` §S3 names as what *would* promote it has not been gathered. See
+  the entry.
+- **Item 6's figure is corrected from five files to seven** and its routing is
+  made specific: the next coder packet taking item 2 folds it in.
+- **Nothing else changed rank, and no entry was renumbered.** Items 1–18 and B1
+  keep their numbers for the reason the seventh reorder gave and this pass
+  re-affirms: `STAGE.md`, `pumasi/DECISIONS.md` **Q-037** and `pumasi-web` all
+  cite entries here by number, and two of those three are not this seat's to
+  edit in the same commit.
+
+**Re-verified at `efed763` by this pass, with the numbers it actually ran.**
+
+- **The suite, re-run rather than read off the coder's commit message.** Root
+  `npm test` **×3**, byte-identical every run: `Test Files 6 passed (6)`,
+  `Tests 86 passed (86)`, `# pass 38`, `# fail 0`,
+  `assert-service-suite-ran: 38 passing, 0 failing, from 7 compiled`. Run by
+  this seat **2026-09-01 06:02–06:09 UTC**. `service/` `npm test` alone a
+  further **×3**, `# pass 38 # fail 0` each time. **31 across six files → 38
+  across seven.** The coder's self-report is confirmed, not carried. **Three
+  runs is not forty** and no determinism claim is made from it —
+  [`STAGE.md`](STAGE.md) §0 rider (b) records that as a gap again.
+- **The suite's contents, read by import rather than by grep.** `ls
+  service/src/test/` returns **seven** files — `auth-session`,
+  `envelope-correction`, `envelope-expiry`, `envelope-lifecycle`,
+  `oauth-callback`, `stamping-multi-signer`, `stamping` — and the *complete*
+  set of non-`node:` module imports across all seven plus the harness is
+  `../worker.js`, `../core/stamping.js` and `../../durable.js`. **This is why
+  the method matters:** `grep -rl mail service/src/test/` hits all seven files,
+  because `email` contains `mail`, and would have reported `mail.ts` covered.
+  It is not. Neither is `storage/r2.ts`, `feedback.ts` or `convert/graph.ts`.
+- **`service/src/durable.ts` is byte-identical to `f0d1912`** — `git diff
+  f0d1912 -- service/src/durable.ts` is empty, checked here. **No worker code
+  changed in this merge**, which is why no release note was owed, why nothing
+  user-visible moved, and why **item 1's count is still four and not five**.
+- **The guard, re-read at its current line.** `service/src/durable.ts:848` is
+  `if (!email || !email.includes('@') || claims.email_verified === false)`.
+  Both of `0080`'s findings about it are on that one line.
+- **The Playwright suite, re-read.** `frontend/playwright.config.ts:58`–`:66`
+  still boots `alembic upgrade head` and `uvicorn app.main:app` with
+  `cwd: backendDir`. Unchanged. It still drives `backend/`.
+- **The live host, and it has not moved.** `https://sign.pumasi.ai/` → **200**
+  at **2026-09-01 06:08:55 UTC**, serving `/assets/index-CnoFAC2c.js` — the
+  same bundle filename the sixth *and* seventh passes measured. **Nothing has
+  been deployed since 01:02 UTC on 2026-09-01.** `/api/version` → **404**
+  (item 4, unchanged, and PR-1's user-visible clause still unmet).
+- **Triage (duty 1), measured rather than manufactured.** `gh issue list
+  --state open` returns **one** issue, **#15**, already carrying `bug` ·
+  `feedback` · `rejected`. **There are no unlabelled open issues**, so duty 1
+  is a no-op this pass and is recorded as one.
+- **`PRODUCT-RULES.md`, read fresh this packet and reported rather than
+  assumed.** Still **not on `pumasi` main** — checked at `pumasi` @ `196b749`:
+  `ls PRODUCT-RULES.md` → *No such file or directory*, and it exists on one
+  commit, `0115758`, on the unmerged branch `worktree-product-rules`. That is
+  **Q-017**, open, now flagged by **ten** consecutive evaluations, and
+  **absence from main is not compliance**. Read from that branch this pass:
+  v1.0, PR-1 and PR-2 unchanged from the last reading. Both gaps stay ranked,
+  at items 4 and 3.
+
+**One correction to another seat's reading, re-measured rather than inherited —
+and it is small, which is the point of recording it.** Job `0080`'s return
+block states that *"`grep -rin oauth service/src/test/` returned nothing at
+`f0d1912` — this branch had never been executed"*. **The grep returns one hit**
+(`auth-session.test.ts:204`, a comment about the OAuth path's 120-character
+name cap). **The conclusion it was offered for is nonetheless correct**, on a
+sharper measurement taken here:
+`git grep -in 'auth/oauth\|email_verified\|id_token' f0d1912 -- service/src/test/`
+returns **nothing**, so no assertion reached the route, the guard or the token.
+Recorded because the sixth reorder counted **four stale citations in four
+days** in this repository and corrected them one by one; this is another
+instance of the same practice, and the practice is the finding, not the seat.
+No count of a streak is claimed here, because this pass did not go back and
+count one.
+
+**Routed, ranked or declined in writing — the three things job `0080` handed up
+and did not act on.** Each gets a disposition here rather than a mention.
+
+1. **`durable.ts:848`'s `!email` clause is dead code** — fully subsumed by
+   `!email.includes('@')`; `''.includes('@')` is already `false`, so no single
+   mutation of it is observable (`0080`'s M4: `# pass 7 # fail 0`).
+   **Disposition: folded, not ranked.** It gets **no entry of its own** —
+   `0080` proposed exactly that and it is right. It is folded into **item 2's
+   guard strand**, because the dead clause and the loose `email_verified`
+   comparison are **on the same line of the same file**, and one packet editing
+   `:848` should close both or neither.
+2. **`npm run build` leaves stale `dist/` output**, so a local run after any
+   test-file rename fails the L-006 guard until `rm -rf service/dist`; CI is
+   unaffected because it builds from a fresh checkout. **Disposition:
+   declined as an entry, recorded as a reproduction step.** `0080` calls it
+   *"A-104 proving load-bearing — a papercut, not a hole"* and this seat
+   agrees: the guard did exactly what `spec/0002` froze it to do, loudly and
+   correctly, and a backlog entry for a guard working is a defect in the
+   backlog. It is written into [`STAGE.md`](STAGE.md) §0 rider (b) beside the
+   command, where the next seat reproducing the figures will meet it, and this
+   pass hit it and cleared it that way. **Re-verified at `efed763`**: this seat
+   built from a removed `dist/`.
+3. **Review breadth is one family, not five of six.** `0080` measured across
+   seven review invocations that **qwen times out at curl's 600 s ceiling on a
+   150 KB code review** while returning correct, cited objections on 31–35 KB
+   spec rounds, and that **grok is unreachable fleet-wide (HTTP 402)**. With
+   gemini and kimi spent on the spec, **glm was the only family that could
+   review that code**. **Disposition: handed up, not acted on, and not this
+   repository's to fix.** It is **D-104**'s subject and `pumasi-ops`'; no
+   `review.sh` change is proposed here and none is this seat's. It is recorded
+   in [`STAGE.md`](STAGE.md)'s change log because §3's `beta` argument leans on
+   review breadth, and a reader weighing that argument is entitled to know the
+   breadth was one. **Carried, not confirmed** — this seat did not re-invoke
+   any reviewer.
+
+**What this pass did not do**, so that its silence is not read as a finding: it
+did not re-run `backend/` pytest or the Playwright `e2e` suite (neither can run
+on this machine — [`STAGE.md`](STAGE.md) §0 rider (b)), did not re-check CI or
+branch protection, did not re-read `pumasi/catalog.json`, did not re-run
+`wrangler deployments list`, did not re-invoke any review family, and
+**answered, closed, softened, dated or moved the default of no `DECISIONS.md`
+question**. It **proposed no deployer, no date and no rollback** — item 1 is
+**Q-012**, which is open and explicitly outside CHARTER Part 0's
+proceed-on-default rule. It **wrote no worker code, no test and no spec**, and
+it did **not** edit `CLAUDE.md`, which is not in this role's may-write list —
+that is recorded as the reason under item 6, not left as an oversight.
+
+**And it wrote no `pumasi-ops` `DIGEST.md` entry, which duty 4 would otherwise
+ask for.** The reason is a measurement, not a preference: at the time of this
+pass the `pumasi-ops` working tree was **dirty with a live dispatcher tick** —
+two job files staged for deletion and six review transcripts untracked, `HEAD`
+at `255d797` (*"tick 05:58–06:20 UTC"*) — so another writer holds that
+checkout, and the role file forbids acting while one does. **This pass's
+evaluation record is therefore the [`STAGE.md`](STAGE.md) change-log row and
+this commit's message**, which is where the steward vetoes by reverting. It
+also wrote nothing in `pumasi`: job `0080` already added the Q-030 evidence row
+at `196b749` and this pass added no second copy of it.
 
 ## What the seventh reorder changed, and what it did not measure
 
@@ -158,7 +334,12 @@ distinct measurements were taken and they are not interchangeable:
 - **Against the tree at `2471a29`** — item 2's `e2e-workflow.test.ts` imports,
   item 3's `FeedbackDialog.vue` capture, item 4's three `package.json` files,
   item 5's `ls RISK_ZONES.yaml`, item 6's `CLAUDE.md` sentences, item 7's
-  router table and `gap-*` classes.
+  router table and `gap-*` classes. **This line is the sixth reorder's dated
+  record of what it measured and it is left exactly as written — Q-034.**
+  `e2e-workflow.test.ts` existed at `2471a29` and its imports were read there;
+  the file was renamed at `07e0188` and the *live* claims that rested on it are
+  struck in item 2, not here. A record of what was true when written is a
+  record, not an error.
 - **Against the served build**, which is what settles anything about a user:
   the bundle (`/assets/index-CnoFAC2c.js`), the route table, the landing chunk,
   the `EnvelopeDetailView` chunk, the stylesheet, and
@@ -278,8 +459,10 @@ the second of which is now this file's item 1.
 **So the two sharpest sentences this entry used to carry are now false and are
 withdrawn**, rather than left to read as pending:
 
-- ~~"both assertions are against one file"~~ — **five** files now; three of
-  them drive routes against a real Durable Object.
+- ~~"both assertions are against one file"~~ — **seven** files now; **four** of
+  them drive routes against a real Durable Object. **Re-verified at `efed763`,
+  2026-09-01 06:05 UTC** (this bullet read *five* and *three* through the sixth
+  and seventh reorders, measured at `2471a29`).
 - ~~"`durable.ts` … covered by nothing"~~ — sessions and the envelope surface
   are covered.
 - ~~"`worker.ts` is covered by nothing"~~ — **retired at `2471a29`**, which is
@@ -288,44 +471,131 @@ withdrawn**, rather than left to read as pending:
   throw is load-bearing, and proves the sweep's internal path is closed to the
   internet.
 
-**One sentence survives verbatim, re-checked in the tree at `2471a29` by this
-evaluation:**
-`e2e-workflow.test.ts` **is still not an end-to-end test of anything.** Its
-imports are `node:test`, `node:assert/strict`, `pdf-lib` and
-`stampAndCertifyPdf` — identical to `stamping.test.ts` — and it calls no route,
-starts no worker and touches no store. The file *name* over-states what it
-does, and `# pass 28` in a release note will be over-read exactly as `# pass 2`
-was. Renaming it is a five-minute honesty fix and belongs in whichever packet
-takes this item. **Note what `2471a29` did *not* change about it:** that release
-added a genuine worker-level test in a different file and left this one's name
-alone, so the misnomer is now surrounded by the thing it claims to be.
+**The sentence that survived three reorders does not survive this one. Struck
+as BUILT at `07e0188`, re-verified at `efed763` by the eighth reorder:**
+~~`e2e-workflow.test.ts` is still not an end-to-end test of anything.~~ **The
+file does not exist.** It was renamed to **`stamping-multi-signer.test.ts`**,
+which is what it always was — a second stamper test. **Measured here rather than taken from the coder's log:** `git diff -M`
+across `07e0188` reports the file **`-1 / +24`** — the single removal is the
+old test title, and the additions are a header comment recording the rename
+plus the new title. **No assertion, fixture or import moved.** `ls service/src/test/` at `efed763` returns seven files and the
+old name is not among them. **The five-minute honesty fix this entry asked for
+in three consecutive reorders was taken, in the packet that took this item,
+exactly as this entry said it should be.** What the renamed file still *is* — a
+shape-not-content stamper assertion — is unchanged and is recorded in
+[`STAGE.md`](STAGE.md) §2.1, not here; it is not a strand of this entry.
 
-**What is left, and a packet should say which strand it takes.**
+**The named first slice is BUILT, at `07e0188`, and is struck rather than left
+to read as pending.**
 
-- **Named first slice — the OAuth callback, which is where job `0050`'s
-  proposal 5 lives.** Verified by the fourth evaluation at `service/src/durable.ts:766`; `0058` moved
-lines in this file, so the number is **carried, not confirmed** — the guard
-itself was re-read and is unchanged:
-  the guard is `claims.email_verified === false`, so an `id_token` that
-  **omits** the claim passes. Stated at the strength the evidence supports and
-  no higher: this is on an **uncovered branch**, proposed from source with no
-  test exercising it, and the code takes the token directly from the provider's
-  token endpoint over TLS (the comment at `:757`–`:758` says so), which is real
-  mitigation. It is *security-shaped on a live auth path*, not a demonstrated
-  vulnerability, and this seat is **not** asserting it is exploitable. That is
-  precisely why it ranks as the first slice here rather than as its own
-  `priority: high` entry: **the cheap next step is the covering test**, which
-  is what job `0050` suggested as a `priority: medium` packet (the OAuth
-  branch, token endpoint stubbed). If the test shows a real admission path, it
-  is promoted out of this entry on that evidence.
-- Covered by nothing, re-checked: `worker.ts`, `storage/r2.ts`, `mail.ts`,
-  `feedback.ts`, `convert/graph.ts`; and inside `durable.ts` — envelope
-  creation, correction and copy, templates, admin, every file route, and
-  `finalize`'s stamping branch.
-- **The integration suite still drives the wrong tree.**
-  `frontend/playwright.config.ts:63` boots `uvicorn app.main:app` locally, or a
-  container from the root `Dockerfile` in CI — `backend/`, both times.
-  Unchanged, and now the single largest thing in this entry.
+- ~~**Named first slice — the OAuth callback, which is where job `0050`'s
+  proposal 5 lives.**~~ **Delivered.** `service/src/test/oauth-callback.test.ts`
+  holds frozen cases **A-500**–**A-506** and drives **both** legs of
+  `GET /api/auth/oauth/(google|microsoft)(/callback)?` through the real Durable
+  Object via `test/support/durable-harness.ts`, with **only** the provider's
+  token endpoint stubbed. **A-500 is the reader guard** — it proves the
+  authorize leg really stores state, the callback really consumes it and the
+  stub is really reached, so the five negative cases cannot be green on a
+  request that never left the route. **One correction to the merging seat's own account, re-measured
+  here rather than repeated:** job `0080`'s return block states that
+  *"`grep -rin oauth service/src/test/` returned nothing at `f0d1912`"*. It
+  returns **one** hit — `auth-session.test.ts:204`, a comment noting that the
+  OAuth path caps a name at 120 characters where the code path under test does
+  not. **The substance is unaffected and is what this entry cares about:**
+  `git grep -in 'auth/oauth\|email_verified\|id_token' f0d1912 -- service/src/test/`
+  returns **nothing at all**, so no assertion anywhere in the suite reached the
+  route, the guard or the token, and the branch had genuinely never been
+  executed. The claim was right; the measurement quoted for it was not, and
+  this file does not carry another seat's grep as its own. **This entry forecast the shape of its own delivery and the
+  forecast held** — it said *"the cheap next step is the covering test"*, and
+  the covering test is what landed, with **no guard changed**.
+
+**What is left. Ranked against each other for the first time, because an
+unordered list of four is not a priority — the packet after this one should be
+able to read which strand it takes without opening a log.** All four
+re-verified at `efed763`, 2026-09-01 06:05 UTC.
+
+- **Residual A — `durable.ts`'s uncovered interior. Take this one next.**
+  Envelope creation and copy, templates, admin, every file route, and
+  **`finalize`'s stamping branch**. Three reasons, in the order they carry
+  weight. **(i)** It is the cheapest per assertion: the harness this entry's
+  own three deliveries built (`test/support/durable-harness.ts`) already
+  constructs the whole object — schema, migrations, routing — so a packet here
+  writes assertions and not scaffolding. Every one of this entry's deliveries
+  has confirmed that forecast, most recently `A-417`–`A-419`. **(ii)**
+  `finalize`'s stamping branch is **the only uncovered path that produces the
+  artefact [`VALUE.md`](VALUE.md) C1 promises** — the stamped PDF and its audit
+  certificate. Everything this product is *for* passes through it, and the two
+  tests that touch stamping at all assert shape rather than content. **(iii)**
+  It is where the defects have actually been: the three unguarded transitions,
+  the ignored `expires_at`, the deleted sender message and the double-`finalize`
+  re-stamp were **all** found in `durable.ts`, by coverage of `durable.ts`.
+  That is an observed base rate over four deliveries, not a guess.
+- **Residual B — the four modules imported by no test at all.**
+  `storage/r2.ts`, `mail.ts`, `feedback.ts`, `convert/graph.ts` — plus
+  `worker.ts` beyond **A-415**, which is imported once and driven only through
+  `scheduled()`. **Re-measured by import, not by grep, and the method is the
+  finding:** `grep -rl mail service/src/test/` hits all seven test files
+  because `email` contains `mail`, and would report `mail.ts` covered. It is
+  not; the complete set of non-`node:` module imports in the directory is
+  `../worker.js`, `../core/stamping.js` and `../../durable.js`. **Second, not
+  first, and the reason is cost rather than value:** three of these four cross
+  a network boundary this suite has no stubs for — Microsoft Graph
+  (`convert/graph.ts`, `mail.ts`), R2 (`storage/r2.ts`) and the GitHub issues
+  API (`feedback.ts`) — so a packet here pays for scaffolding that residual A
+  does not. **`feedback.ts` is the one worth naming inside this strand**: it
+  carries a user's own material into a **public** GitHub issue, which is
+  CHARTER §5.2 and `PRODUCT-RULES.md` PR-2's sanitization clause, and it is
+  also item 3's subject — a packet taking item 3 should consider taking this
+  with it.
+- **Residual C — the integration suite still drives the wrong tree, and it
+  ranks last despite still being the single largest thing in this entry.**
+  Re-read at `efed763`: `frontend/playwright.config.ts:58`–`:66` boots
+  `alembic upgrade head` and `uvicorn app.main:app` with `cwd: backendDir`
+  locally, or a container from the root `Dockerfile` in CI — **`backend/`,
+  both times**. Unchanged. **Three grounds for last, and none of them is that
+  it is small.** **(i)** It cannot be measured on this machine at all: `docker`
+  is not on `PATH` and a TCP connect to Postgres on `:5433` is refused
+  ([`STAGE.md`](STAGE.md) §0 rider (b)), so a packet taking it cannot compare
+  before against after — and this repository's own **L-006** is the lesson that
+  a suite you cannot watch fail is not evidence. **(ii)** Re-pointing the
+  **only** route-driving suite from `backend/` to the worker is the closest any
+  build comes to *acting on* **Q-018**, which is the steward's and is open. A
+  packet may honestly decide the mechanics; it may not decide which tree is the
+  product by moving the only suite that tests one over HTTP. **(iii)** It is
+  the one strand whose cost this seat cannot estimate, and ranking an
+  unestimated strand first is how a queue stalls. **What would move it up:**
+  Q-018 answered, or a packet that scopes it as *add* a worker-driving HTTP
+  suite beside the existing one rather than *re-point* it — that framing takes
+  ground (ii) away entirely and this seat would rank it first if proposed.
+- **Residual D — the `email_verified` guard, now measured rather than proposed
+  from source. It stays inside this entry and is not promoted, and the reason
+  is the evidence, not caution.** `service/src/durable.ts:848` reads
+  `if (!email || !email.includes('@') || claims.email_verified === false)`.
+  **A-502 measures, in the tree, that an `id_token` which OMITS the claim is
+  admitted** — cookie set, account row created, `GET /api/auth/me` answers
+  `200` on that cookie. That is a real change in evidence status: it was
+  *proposed from source on an uncovered branch* through three reorders, and it
+  is now *measured*. **It is still not a demonstrated vulnerability and this
+  seat does not assert one.** Reaching the branch needs a token from the
+  configured provider's own endpoint, for this deployment's `client_id` **and**
+  `client_secret`, against a state row this worker minted minutes earlier; the
+  code takes the token directly from that endpoint over TLS. **`spec/0009` §S3
+  names exactly what would raise it** — a path by which such a token carries an
+  uncontrolled email and no claim — **and says plainly that nobody gathered
+  it.** That is a question about Google and Microsoft, not about this
+  repository, and it has not been answered since. **So: no promotion, on the
+  stated ground that the promotion condition this entry set for itself is
+  unmet.** What it gets instead is a route: **the fix is one token and its test
+  already exists.** `0080`'s mutation **M1** — `=== false` → `!== true` — turns
+  **A-502 red and nothing else**, and A-502's own comment says in advance that
+  *"if a later packet tightens the guard, A-502 going red is the correct
+  outcome"*. **Folded in here, on the same line:** `!email` at `:848` is **dead
+  code**, fully subsumed by `!email.includes('@')` (`''.includes('@')` is
+  already `false`; `0080`'s M4 shows no single mutation of it is observable).
+  **Whichever packet next edits `:848` should close both or neither** — one
+  line, two findings, one existing test that proves the tightening. It gets no
+  entry of its own; `0080` proposed exactly that and is right.
 
 **Boundary, unchanged and it must survive:** *characterize, do not adjudicate.*
 A test that records what the worker does is ordinary work; a test written to
@@ -361,7 +631,34 @@ and moved again: **28 across five files → 31 across six**, `# fail 0`, over
 **40 consecutive runs**. **Everything else in this entry — the OAuth-callback
 strand, the uncovered modules, `e2e-workflow.test.ts`'s misnomer and the
 Playwright suite driving `backend/` — is `carried, not confirmed` from the
-sixth reorder;** this pass did not re-read any of it.
+sixth reorder;** this pass did not re-read any of it. **That sentence is the
+seventh reorder's dated record of its own scope and is left as written —
+Q-034.** Two of the four things it names were delivered at `07e0188` and are
+struck above by the eighth reorder, which re-read all four.
+
+**Updated by the eighth reorder at `efed763`, and this is the whole of what
+changed here.** **This is still the top *build* entry, and it did not move.**
+Nothing above it was built: item 1 is operator action and is still four repairs
+deep, re-verified against the live host at 06:08:55 UTC. **Two of this entry's
+strands were delivered by coder job `0080` and are struck above** — the named
+first slice (the OAuth callback, `A-500`–`A-506`) and the misnomer (the rename
+to `stamping-multi-signer.test.ts`). **The entry did not empty and this seat
+will not let the delivery read as one:** four modules are still imported by no
+test, `worker.ts` is driven only through `scheduled()`, `durable.ts`'s interior
+is untouched, and the only route-driving suite still drives `backend/`.
+**Assertion count re-verified at `efed763` by this pass and moved again: 31
+across six files → 38 across seven**, `# fail 0`, over **3** consecutive runs
+at 06:02–06:09 UTC — three, not forty, and the difference is stated rather than
+inherited from the seventh reorder's forty. **The residual is ranked A → B → C
+above, with a reason each, and D is folded rather than promoted.** **The
+boundary below held under the packet that took this entry and is re-affirmed
+rather than restated:** `07e0188` changed **no** worker code —
+`git diff f0d1912 -- service/src/durable.ts` is empty, checked by this seat —
+and A-502 is marked *recorded, not endorsed* in its own comment, which is
+`A-302`'s mechanism copied rather than paraphrased. **A packet taking residual
+A, B or C must not assume otherwise**: characterizing what `durable.ts` does is
+ordinary work; a test written to assert that what it does is *correct* answers
+**Q-018**, which is the steward's.
 
 **3 · The feedback screenshot must be attached, not pre-attached** — source:
 `PRODUCT-RULES.md` **PR-2** (v1.0, read fresh this packet from `pumasi` branch
@@ -534,14 +831,23 @@ documentation defects with a documentation cost; they are wrong instructions.
    this, correctly declined to edit `CLAUDE.md` from a `service/`-scoped packet,
    and handed it here.
 2. **The `service/` coverage sentence — *"`src/test/` holds two files and both
-   exercise `core/stamping.ts` only"*.** At `2471a29` it holds **five**:
-   `stamping`, `auth-session`, `envelope-lifecycle`, `e2e-workflow` and
-   `envelope-expiry`. Three of them drive a real Durable Object through
-   `service/src/test/support/durable-harness.ts`, and A-415 drives
-   `service/src/worker.ts`. **The sentence understates coverage, which is the
+   exercise `core/stamping.ts` only. Auth, the Durable Object store, R2 and
+   mail are covered by nothing"* (`CLAUDE.md:78`–`:81`).** ~~At `2471a29` it
+   holds **five**: `stamping`, `auth-session`, `envelope-lifecycle`,
+   `e2e-workflow` and `envelope-expiry`.~~ — the sixth reorder's dated reading,
+   superseded twice and kept as its record. **Re-verified at `efed763` by the
+   eighth reorder: it holds SEVEN** — `auth-session`, `envelope-correction`,
+   `envelope-expiry`, `envelope-lifecycle`, `oauth-callback`,
+   `stamping-multi-signer`, `stamping`. **Four** drive a real Durable Object
+   through `service/src/test/support/durable-harness.ts`, A-415 drives
+   `service/src/worker.ts`, and auth is covered twice over (`A-300`–`A-308`,
+   `A-500`–`A-506`). **A quarter of the sentence is still true and this entry
+   says so rather than striking the whole:** `mail.ts` and `storage/r2.ts` are
+   imported by no test. **The sentence understates coverage, which is the
    direction that reads as conservative and is still false** — an agent told
    the suite tests one file will not think to check whether its change is
-   already covered.
+   already covered — **and the gap it understates by has grown from three files
+   to five.**
 3. **The Deployment section still describes the Railway stack first.** It does
    carry Q-018's correction, so this is the mildest of the three, but
    `README.md` was rewritten at `ba1cea7` to put the served tree first and
@@ -553,6 +859,26 @@ minutes. **The right way to take it is to fold it into whichever packet next
 touches `CLAUDE.md`** — job `0064` said exactly that about (2) and it is right
 about all three. It is ranked rather than left unwritten so that it does not
 get rediscovered a seventh time.
+
+**The eighth reorder makes the routing specific rather than leaving it to the
+next reader, because "whichever packet next touches `CLAUDE.md`" has now failed
+to fire three times running.** `0064`, `0065` and `0080` each measured a false
+sentence here, each correctly declined to edit `CLAUDE.md` from a `service/`-
+scoped packet, and each handed it up. **So: the next coder packet taking item 2
+folds in (2), and (2) alone.** That packet is the one changing the number, its
+spec has to state the coverage shape anyway, and one line of `CLAUDE.md` is
+inside any honest account of what it did. (1) and (3) stay unrouted here and
+keep waiting for a packet that touches those sections. **This seat did not edit
+`CLAUDE.md` itself and the reason is recorded rather than left implicit:
+`CLAUDE.md` is not in the product-manager role's may-write list**
+(`pumasi-ops/roles/product-manager.md`, *May write*), which enumerates issue
+labels, the four `roadmap/` files, `DECISIONS.md` questions and the ops
+`DIGEST.md`. Editing agent instructions on the strength of an unlisted power is
+**L-003**, and this repository has paid for that twice. **The entry stays at 6
+and is not promoted**: it got staler — (2) now understates by five files rather
+than three — but staleness in the conservative direction is still the mildest
+thing on this list, and every entry above it has either a user or a rule on the
+other end. Recorded as weighed, not as overlooked.
 
 
 **7 · The residue of three closed issues — inert `gap-*` on two live views,

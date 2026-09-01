@@ -25,6 +25,28 @@ change log below was rewritten**; the correction is recorded by a new row, the
 same way `pumasi` `df89865` and `pumasi-sign` `c23c7e6` corrected a published
 job number an hour earlier.
 
+**Corrected again 2026-09-01 (eighth pass), at `efed763`. Stage unchanged, and
+this was also not a full re-evaluation — read this paragraph before trusting
+any figure below as current.** It was triggered by a merge this page had no
+record of: coder job `0080` merged `af617e1` → `efed763` and the dispatcher
+then recorded the job `FAILED: timed out after 5400s`, so **the work is in
+`main` and the wrap-up is not**. It touched **six things and no others**: §0
+rider (a)'s `service/src/test/` contents row; §0 rider (b)'s preamble and its
+arm table; §2.1's *surviving sentence* bullet; §2.1's *still covered by
+nothing* list; §5's coverage-argument dependency on that list; and this note.
+**Re-measured by this pass, with times:** root `npm test` at `efed763` — **3
+runs, 3 pass, 0 fail**, byte-identical counts every run, `Test Files 6 (6)`,
+`Tests 86 (86)`, `# pass 38`, `# fail 0`, `38 passing, 0 failing, from 7
+compiled`, at **2026-09-01 06:02–06:09 UTC**; `service/` `npm test` alone ×3
+after `rm -rf service/dist && npm run build`, `# pass 38 # fail 0` each time;
+the imports of every file in `service/src/test/` re-read; and the live host at
+**06:08:55 UTC** (`200`, bundle `/assets/index-CnoFAC2c.js` **unchanged**,
+`/api/version` still `404`). **Everything else on this page is the sixth
+evaluation's or the seventh pass's, carried and not confirmed** — §1, §2.2–§2.6,
+§3, §4, the `catalog.json` reading, the CI rows, the deployment list and the
+handler list were not re-run. **No dated row in the change log below was
+rewritten**; the correction is recorded by a new row.
+
 **What this evaluation changed is every row that rested on the sentence
 *nothing has deployed*. Something deployed.** For the first time in this
 file's life the live host moved: the bundle went `/assets/index-j38Qwibz.js` →
@@ -157,7 +179,8 @@ fourth recorded as one.
 | Evidence | Who re-ran it | When |
 | :--- | :--- | :--- |
 | **Root `npm test` (= `gate.sh` step 1) at `56a8bf8` — 21/4 and 85/6** | **the fifth evaluation, locally — root `npm test` ×3 plus `service/` `npm test` ×1; service assertions rest on 4 runs, the guard line on 3, the frontend figures on 2 runs *read*** | **2026-09-01 00:10–00:35 UTC** |
-| **`service/src/test/` contents — four files, `e2e-workflow.test.ts`'s four imports** | **the fifth evaluation, reading the tree at `56a8bf8`** | **2026-09-01** |
+| **`service/src/test/` contents — seven files; every non-`node:` import in all seven read** | **the eighth pass, reading the tree at `efed763`** — `ls` returns `auth-session`, `envelope-correction`, `envelope-expiry`, `envelope-lifecycle`, `oauth-callback`, `stamping-multi-signer`, `stamping`; the only module imports across the whole directory are `../worker.js` (`envelope-expiry`), `../core/stamping.js` (both stampers) and `../../durable.js` (`support/durable-harness.ts`) | **2026-09-01 06:05 UTC** |
+| ~~`service/src/test/` contents — **four** files, `e2e-workflow.test.ts`'s four imports~~ — **superseded, and kept as the record of what was true when written.** `e2e-workflow.test.ts` was **renamed** to `stamping-multi-signer.test.ts` at `07e0188`; the row above replaces it | the fifth evaluation, reading the tree at `56a8bf8` | 2026-09-01 |
 | **The three transitions now guarded (`durable.ts:1252`, `:1452`, `:1513`; `isTerminal` at `:109`)** | **the fifth evaluation, reading the tree at `56a8bf8`** | **2026-09-01** |
 | **Absence of `scheduled` / cron (`grep` over `worker.ts`, `wrangler.jsonc`)** | **the fifth evaluation, at `56a8bf8`** | **2026-09-01** |
 | **Live host: bundle filename `/assets/index-j38Qwibz.js`; `/api/auth/login?next=%2F` → `404`** | **the fifth evaluation, via `curl` — this row was `inherited` at the fourth and is not now** | **2026-09-01 00:29 UTC** |
@@ -248,11 +271,29 @@ none.** The fourth evaluation ran 1, the fifth 4, the sixth 2, and each said so
 rather than inheriting; the seventh pass **ran 40**. The suite shape moved
 again in between — `2471a29` took it to 28 assertions across five files and
 `9659e69` to **31 across six**, adding `envelope-correction.test.ts` — so the
-40 below measure the suite that exists **today** and nothing earlier. Command,
-kept for reproducibility, run from this repository's root:
+40 below measure the suite that existed at `c23c7e6`. Command, kept for
+reproducibility, run from this repository's root:
 
 ```
 for i in $(seq 1 40); do npm test; done   # at c23c7e6, 2026-09-01 03:25:00–03:36:03 UTC
+```
+
+**And the shape moved once more, so those 40 no longer describe today.**
+`07e0188` took the suite to **38 assertions across seven files**, adding
+`oauth-callback.test.ts` and renaming `e2e-workflow.test.ts` to
+`stamping-multi-signer.test.ts`. **The eighth pass ran 3, not 40, and says so
+rather than inheriting the seventh's number** — 40 runs of a suite shape that
+no longer exists is not a determinism claim about the one that does. The gap is
+recorded, again, as a gap: **rider (b) asks for 40 and this pass ran 3.** One
+local wrinkle worth carrying, measured here rather than taken from the coder's
+log: `npm run build` does not clean `service/dist/`, so after the rename a
+stale `e2e-workflow.test.js` survives in `dist/` and the L-006 guard fails
+loudly until `rm -rf service/dist`. This pass built from a removed `dist/`;
+anyone reproducing the figures below must do the same. Command:
+
+```
+rm -rf service/dist && npm run build   # from service/, once
+for i in 1 2 3; do npm test; done      # repository root, at efed763, 2026-09-01 06:02–06:09 UTC
 ```
 
 **40 of 40 passed and every run reported byte-identical counts**, checked by
@@ -263,7 +304,8 @@ nothing (L-006; frozen case `spec/0002` A-103 pins exactly this).
 
 | Suite | Runs | Result | Per-run counts |
 | :--- | ---: | :--- | :--- |
-| **Root `npm test` at `c23c7e6` — the command and the suite that exist today** | **40** | **40 pass, 0 fail** | identical on every run: `Test Files 6 passed (6)`, `Tests 85 passed (85)`, `# pass 31`, `# fail 0`, `assert-service-suite-ran: 31 passing, 0 failing, from 6 compiled`. **Measured by the seventh pass, 2026-09-01 03:25:00–03:36:03 UTC.** |
+| **Root `npm test` at `efed763` — the command and the suite that exist today** | **3** | **3 pass, 0 fail** | identical on every run: `Test Files 6 passed (6)`, `Tests 86 passed (86)`, `# pass 38`, `# fail 0`, `assert-service-suite-ran: 38 passing, 0 failing, from 7 compiled`. **Measured by the eighth pass, 2026-09-01 06:02–06:09 UTC**, from a removed `dist/`. `service/` `npm test` alone was run a further **3** times with the same `# pass 38 # fail 0`. **Three runs is not forty and no determinism claim is made from it.** |
+| Root `npm test` at `c23c7e6` — **a suite shape that no longer exists** (31 service assertions across six files, not 38 across seven) | 40 | 40 pass, 0 fail | identical on every run: `Test Files 6 passed (6)`, `Tests 85 passed (85)`, `# pass 31`, `# fail 0`, `assert-service-suite-ran: 31 passing, 0 failing, from 6 compiled`. **Measured by the seventh pass, 2026-09-01 03:25:00–03:36:03 UTC.** **History; does not describe `efed763`.** |
 | Root `npm test` at `f7c8d03` — **a suite shape that no longer exists** (21 service assertions, not 31) | 1 | pass | `Test Files 6 passed (6)`, `Tests 85 passed (85)`, `# pass 21`, `# fail 0`, `assert-service-suite-ran: 21 passing, 0 failing, from 4 compiled`. **One run. No determinism claim.** **History; does not describe `c23c7e6`.** |
 | Root `npm test` at `d18d534` — **a suite shape that no longer exists** (2 service assertions, not 21) | 40 | 40 pass, 0 fail | identical on every run: `Tests 85 passed (85)`, `# pass 2`, `# fail 0`, `2 passing, 0 failing, from 2 compiled`. **History; does not describe `f7c8d03`.** |
 | `backend/` pytest — 541 test functions | **0** | **not run, not inherited** | — |
@@ -602,6 +644,18 @@ against one pure function, and the remaining gap is breadth.** All four files
 in `service/src/test/` were **read** for this evaluation rather than counted,
 and they fall into two distinct halves:
 
+> **Count superseded, 2026-09-01, eighth pass at `efed763`.** The paragraph and
+> the two halves below are the fifth evaluation's reading at `f7c8d03` and are
+> left as its record. **Today the job runs 38 assertions across seven files**
+> — 21/four → 28/five (`2471a29`) → 31/six (`9659e69`) → **38/seven**
+> (`07e0188`) — re-run three times by this pass, `# fail 0` on each. The
+> *shape* of the argument below is unchanged and still describes the suite:
+> the harness half has grown from two files to **four** (`auth-session`,
+> `envelope-lifecycle`, `envelope-correction`, `oauth-callback`), the stamper
+> half is still two files asserting shape rather than content, and
+> `envelope-expiry` still holds the only assertion that drives `worker.ts`.
+> What *has* changed is the third bullet below — see the correction under it.
+
 - **Two of them now drive the real Durable Object.** `auth-session.test.ts`
   (A-300–A-308, job `0046`) and `envelope-lifecycle.test.ts` (A-400–A-409, job
   `0050`) both import `newHarness` from `./support/durable-harness.js`, and
@@ -617,28 +671,67 @@ and they fall into two distinct halves:
   adjudicating it, which is exactly what `BACKLOG.md` demanded of the packet.
   Nothing here decides which tree is the product.
 
-**One sentence from the old text survives verbatim, re-checked at `f7c8d03`,
-and it should not be lost in the good news:**
+**The sentence that survived four evaluations does not survive this one, and
+it is struck rather than left to read as pending. Re-verified at `efed763`,
+2026-09-01 06:05 UTC:**
 
-- **`e2e-workflow.test.ts` is still not an end-to-end test of anything.** Its
-  imports are `node:test`, `node:assert/strict`, `pdf-lib` and
-  `stampAndCertifyPdf` — **identical to `stamping.test.ts`** — and it calls no
-  route, starts no worker and touches no store. The file *name* over-states
-  what it does. **The number still escapes this page**: `# pass 21` is printed
-  by the merge gate and will be quoted in release notes, and a reader who sees
-  a file called `e2e-workflow` in a suite of four will over-read it exactly as
-  `# pass 2` invited. Renaming it is a five-minute honesty fix and is named in
-  `BACKLOG.md` item 2.
+- ~~**`e2e-workflow.test.ts` is still not an end-to-end test of anything.**~~
+  **Struck — the file does not exist.** `07e0188` renamed it to
+  **`stamping-multi-signer.test.ts`**, which is what it always was. **Measured
+  here rather than taken from the coder's log:** `git diff -M` across that
+  commit reports the file **`-1 / +24`** — the single removal is the old test
+  title, and the additions are a header comment recording the rename plus the
+  new title. **No assertion, fixture or import moved**, and the file's
+  behaviour is byte-for-byte what it was. `ls service/src/test/` at `efed763`
+  returns seven files and the old name is not among them. **The over-reading
+  risk this page named for four evaluations is closed at its source**: the
+  number the merge gate prints is now `# pass 38`, and no file in the suite
+  claims to drive an end-to-end path it does not drive. What the renamed file
+  still is — a second stamper test asserting shape rather than content — is the
+  next bullet, unchanged and still open.
 - Those two stamper tests still assert **shape, not content**: stamped bytes
   longer than the original, page count 2, two 64-hex-character hashes, and
   `notEqual(originalHash, completedHash)` — which passes for *any* mutation.
   Neither asserts that a signer's name, a date or a checkbox value reached the
   page. Unchanged, and unaddressed by either new file.
-- **Still covered by nothing**, re-checked: `worker.ts`, `storage/r2.ts`,
+- ~~**Still covered by nothing**, re-checked: `worker.ts`, `storage/r2.ts`,
   `mail.ts`, `feedback.ts`, `convert/graph.ts`; and inside `durable.ts` —
   envelope creation, correction and copy, templates, admin, every file route,
   `finalize`'s stamping branch, and **the OAuth callback**, which is where
-  `BACKLOG.md` item 2's named first slice sits.
+  `BACKLOG.md` item 2's named first slice sits.~~ — **the fifth evaluation's
+  list, superseded twice. Two names have left it and it did not empty.**
+- **Still covered by nothing, re-measured at `efed763` by the eighth pass** —
+  and measured by *import*, not by grep, because `mail` and `worker` are
+  substrings of `email` and `workerd` and a grep over the directory reports
+  false coverage for both. The complete set of non-`node:` module imports
+  across all seven test files and the harness is: `../worker.js`
+  (`envelope-expiry.test.ts`), `../core/stamping.js` (`stamping.test.ts`,
+  `stamping-multi-signer.test.ts`) and `../../durable.js`
+  (`support/durable-harness.ts`). Therefore:
+  - **Imported by no test at all:** `storage/r2.ts`, `mail.ts`, `feedback.ts`,
+    `convert/graph.ts`. Four modules, unchanged since this list was first
+    written. Between them they hold the signed documents, send on a sender's
+    behalf, and carry a user's own material into a public GitHub issue.
+  - **`worker.ts` beyond A-415** — the entrypoint is imported once and its
+    `scheduled()` export is the only thing driven.
+  - **Inside `durable.ts`:** envelope creation and copy, templates, admin,
+    every file route, and `finalize`'s stamping branch — which is the only
+    uncovered path that produces the artefact `VALUE.md` C1 promises.
+  - **Left the list:** envelope *correction* (`A-417`–`A-419`, `9659e69`) and
+    **the OAuth callback** (`A-500`–`A-506`, `07e0188`). The second is the one
+    this page leaned on for four evaluations as *"where `BACKLOG.md` item 2's
+    named first slice sits"*; it is covered now, on both the Google and the
+    Microsoft leg, through the real Durable Object with only the provider's
+    token endpoint stubbed.
+  - **And the coverage did what this page says coverage is for: it found
+    something.** `A-502` records, in the tree, that an `id_token` which
+    **omits** `email_verified` is admitted — cookie set, account row created,
+    `GET /api/auth/me` `200`. That is a **measurement of a branch, not a
+    demonstrated vulnerability**, it is marked *recorded, not endorsed* in the
+    test's own comment, and `spec/0009` §S3 states plainly what evidence would
+    raise it and that nobody has gathered it. It is not a promotion argument
+    and this page does not use it as one; its ranked home is `BACKLOG.md` item
+    2's guard strand.
 
 **And the coverage found defects, which is the point of having it — and one of
 them is already repaired because of it.** The lifecycle suite characterized
@@ -1226,6 +1319,16 @@ and that fact expired at 2026-09-01 01:02 UTC. **All seven rows were
 re-measured by this seat between 01:56 and 02:06 UTC; not one was carried.**
 Four retire, one moves in the bad direction, one is new, and one is unchanged.
 
+**What the eighth pass changed here, at `efed763`: one row was added and no
+existing row was re-measured or rewritten.** The table is **eight** rows now.
+The new row is `CLAUDE.md`'s *"`src/test/` holds two files"*, which this pass
+measured false while re-reading §2.1 and which had no ranked home outside
+`BACKLOG.md` item 6. **Every other row on this page is the sixth evaluation's
+(or, for the settings-dialog row, the seventh pass's), carried and not
+confirmed** — the live host was re-`curl`ed at 06:08:55 UTC and the bundle is
+unchanged, so nothing in the production half of any row can have moved, but
+the source halves were not re-read and this pass does not pretend they were.
+
 **The four states, unchanged as definitions.** A claim can be **(i)** wrong in
 source and in production, **(ii)** right in both, **(iii)** fixed in source and
 still wrong in production, or **(iv)** merged and never shipped — present on
@@ -1239,6 +1342,7 @@ still wrong in production, or **(iv)** merged and never shipped — present on
 | `BETA` chip and "in active Beta" | `frontend/src/views/LandingView.vue` | **RETIRED — (ii) right in both, and the badge now reads `ALPHA`.** The served landing chunk opens ``var g=`alpha` `` and derives `ALPHA — ACTIVE DEVELOPMENT` from it. Two evaluations disputed this row's state while it was unshipped; the deployment settled it, and it settled it correctly, because `a49f594` had already made the badge a function of **this file**. Frozen case **A-001** keeps them together. | **Nobody. Done and delivered**, and it is the one thing the unannounced deploy got right by construction rather than by luck. |
 | "Apache-2.0 (Open Source)", "100% Apache-2.0", "…certificates under Apache-2.0." | `LandingView.vue:43`, `:80`, `:210` — **and now `https://sign.pumasi.ai/`** | **(i) Wrong in source and in production. Was (iv); the deployment moved it, and this is the only row on this page that got worse.** Three distinct claims, extracted from the served chunk at 01:57 UTC and quoted in full in §2.3.2, against `ls LICENSE*` → nothing and `gh repo view --json licenseInfo` → `null` on a `PUBLIC` repository. **This seat's reading: a live public misstatement.** The table row sets it against *"Proprietary Closed Source"* for both named competitors, so it is an invitation to choose this product on terms that do not exist. | **The steward, via Q-021**, whose *"not yet public"* premise expired at 01:02 UTC. **No agent may settle it either way** — its default is to add `LICENSE`, an outward grant CHARTER Part 0 does not release; its alternative is to strike the copy, which is the same decision taken by deleting the evidence. `BACKLOG.md` **B1**, reduced to its (b) half. Evidence added to Q-021 and Q-028 by this evaluation; neither closed. |
 | Uncited competitor pricing | `LandingView.vue` comparison table | **RETIRED — (ii) right in both.** Fixed at `a49f594` and shipped fixed: the served caption reads *"as published on each vendor's own pricing page, read **2026-08-31**"*, links both vendors and [`MARKET.md`](MARKET.md), and closes *"Prices move; the date is part of the claim."* Frozen cases **A-003**/**A-004** parse the figures out of `MARKET.md` at test time. | **Nobody. Done and delivered.** The role file's *"every claim about a competitor is cited or absent"* is now satisfied on a public page and not only in a repository. |
+| *"`src/test/` holds **two** files and both exercise `core/stamping.ts` only. Auth, the Durable Object store, R2 and mail are covered by nothing"* | `CLAUDE.md:78`–`:81` | **(i), and the qualification is not a quibble: this claim has no production counterpart, so *wrong in source* is the whole of it.** `CLAUDE.md` is read by agents and shipped to nobody, and the four states above are written for claims a user can meet; no fifth state is invented here for one row. **It understates rather than overstates — which is the direction that reads as conservative and is exactly why it has survived five evaluations.** Re-measured at `efed763` by the eighth pass: `src/test/` holds **seven** files; **four** of them drive the real Durable Object through `support/durable-harness.ts`; auth is covered (`A-300`–`A-308`, `A-500`–`A-506`) and the store is covered across the envelope surface. `mail.ts` and `storage/r2.ts` **are** still imported by no test, so a quarter of the sentence is still true. **An agent told the suite tests one pure function will not think to check whether its change is already covered** — that is a wrong instruction in the file every agent here reads first, not a documentation defect. | **A coder, folded in — and this pass names which one.** `BACKLOG.md` **item 6**(2), whose figure is corrected there to seven. `CLAUDE.md` is **not** in the product-manager role's may-write list, so this seat did not edit it and records that as the reason rather than as an oversight. The eighth reorder routes it to **the next coder packet taking item 2**, since that packet is the one changing the number. |
 | `"status": "seed"` | `pumasi/catalog.json` | **Unchanged, and it is the one row here that six evaluations have not moved.** Re-read directly at `pumasi` @ `cdc0b9a` by this seat: `products[]` says `seed` for both products, `items[]` uses `status` for `pumasi-sign` and `maturity` for `pumasi-booking`, `pumasi-tunnel` is absent from both, and top-level `updated` still reads **`2026-08-29`** — three days stale across a tick in which this product deployed its own front page. Details below. | **Nobody, today** — **Q-019**, open, and its default is a *role-file amendment* nobody has made. Not editable by this seat and not edited here. |
 | A settings-only PATCH deletes the sender's message to signers | `durable.ts` PATCH `/api/submissions/{id}`; `EnvelopeDetailView.vue` settings dialog | **(iii) Fixed in source at `9659e69`, still wrong in production — moved out of (i) at `c23c7e6` by the seventh pass, and it is the second occupant of state (iii).** **The repair, re-read in the tree rather than taken from the commit message:** `durable.ts:1326`–`:1328` now writes `body.message !== undefined ? (body.message != null ? … : null) : (sub.message ?? null)`, so an omitted `message` is kept and an explicit `null` still clears it; `title`'s `?? sub.title` is unchanged above it. Three frozen cases **A-417–A-419** drive it and `A-416` passes unaltered. **Not in production**: the live bundle is still `/assets/index-CnoFAC2c.js`, measured at **03:25:05 UTC**, built from `0e26917` — two releases before the repair. `BACKLOG.md` **item 1** now carries it as one of four merged repairs no user has met. **The row as it stood at the sixth evaluation, kept because the measurement is still the evidence for the defect:** the served `EnvelopeDetailView-C4VlFBtA.js` sends `{expires_at, reminders_enabled, reminder_interval_days}` and then toasts *"Envelope settings updated."*; the worker writes `message = body.message != null ? … : null` while preserving `title` with `?? sub.title` on the line above. Omission is deletion. Introduced once, at `c2b674e`, and unchanged since — so it is in the deployed build and on `main` alike. Found by coder job `0065` through its harness and handed up; **verified here against the served chunk as well as the source.** | **Nobody, for the code — it is built.** **For the behaviour a user meets, a deploy** — **Q-012**, open, and `BACKLOG.md` **item 1**, which is operator action rather than a build. **Q-037**'s 7-day window closes **2026-09-08**. **And one part has no owner because it has no remedy: the messages already deleted are gone**, overwritten with `NULL`, no shadow copy. |
 
@@ -1331,3 +1435,4 @@ steward's desk.
 | 2026-09-01 | `alpha` (**unchanged** — fifth evaluation, at `56a8bf8`) | **The main event is that half of §2.6 was delivered and the stage did not move, which is the distinction this page exists to hold.** Coder job `0058` merged `68e5d08`: the three unguarded envelope transitions now refuse — `cancel` `409` (`durable.ts:1252`), `complete` `410` (`:1452`), `decline` `409` (`:1513`), one predicate `isTerminal` at `:109`, each guard the first statement of its branch so a refusal writes and audits nothing. **Verified in the tree at `56a8bf8` by this seat**, not read off `pumasi/DECISIONS.md` **Q-031**, whose cited line numbers are the pre-fix ones. **No promotion, and the reasons are separable.** (a) **Merged is not shipped:** re-`curl`ed at 2026-09-01 00:29 UTC, the deployed bundle is unchanged (`/assets/index-j38Qwibz.js`) and `GET /api/auth/login?next=%2F` is still `404`, so all three transitions still behave the old way for every user — the repair moved from §5 state (i) to state (iii), which is a claim about the repository, not the product. **State (iii) now has two occupants** (#7 and this) and per **Q-028** they wait on the same single bundle. (b) **The release widened no coverage:** re-run at `56a8bf8`, `Test Files 6 (6)`, `Tests 85 (85)`, `# pass 21`, `# fail 0`, `21 passing, 0 failing, from 4 compiled` — **identical to `f7c8d03`**. Runs behind each: service assertions **4 runs**, the guard line **3 runs**, the frontend figures **2 runs read**. A defect closed is not breadth gained, and rider (c) forbids promoting on evidence strength. (c) **Stage 1's exit gate still needs both landing surfaces live and one is not**, so **`STAGE_PLAYBOOK.md` Event 3 did not fire**; **Q-024** is open fleet-wide and no gate figure is quoted from here into anything public. **No demotion:** nothing regressed. **Corrected:** §2.6 carried *"`complete` … omits `completed`, which mostly yields the wrong refusal rather than a wrong write"* — **false**, disproved by the work it described. The completion count reads `AND is_cc = 0`, so a CC recipient is still `pending` at completion, passes both guards, re-enters `finalize()` and writes a second `completed` event, re-stamping the executed PDF. `spec/0006/SPEC.md` §S1a has the reasoning, frozen case **A-406** the measurement. Struck here and retired with the same correction in `BACKLOG.md`. **Not claimed:** `VALUE.md` C1 was not falsified — the stamped PDF and its certificate live in R2 and a status overwrite never touched them; the damage was the row and the audit log disagreeing with the certificate, **L-009** at row scale. **New in §4:** this repository has **no `RISK_ZONES.yaml`**, which forced `0058` to apply CHARTER Part 4 by hand to classify Q-031 — ranked `BACKLOG.md` **item 7**, not higher, because Part 4's own default (*unmapped → can hurt someone*) already fails safe. **Which tree this file's stage is a claim about is now stated in the header** (**Q-018**): the Worker in `service/` and the SPA it serves, not `backend/`. **Re-verified rather than carried:** the live host (re-`curl`ed), `catalog.json` at `pumasi` @ `3bc1822`, `PRODUCT-RULES.md` still absent from `pumasi` main (**Q-017**, seventh consecutive evaluation), the `expires_at` grep, `e2e-workflow.test.ts`'s four imports, and the undeployed set re-counted at **four** commits of which **two** change what a user meets. **Still not closed:** rider (b) asks for 40 runs and this evaluation ran 4; recorded as a gap, not papered over. |
 | 2026-09-01 | `alpha` (**unchanged** — sixth evaluation, at `2471a29`) | **The main event is that `sign.pumasi.ai` was deployed and nobody in the queue announced it.** Four deployments between 00:46 and 01:02 UTC, `Source: Unknown (deployment)`, the live one being version `96ff7004-45f0-439d-a4e0-68e35f739462` at **01:02:16.132 UTC** — five seconds before commit `0e26917`'s own timestamp, so it was built from a working tree rather than a pushed commit. Dated by chunk fingerprint, not by clock: the served `SendView` chunk is post-`1338f68`, the served `SignedOutView` chunk matches `0e26917`, and `wrangler versions view` reports `Handlers: fetch` alone, which puts it before `2471a29`. **Four merged repairs reached users at once** — #7's sign-in path, #8's landing page, `68e5d08`'s envelope guards, and the login-page presentation batch — and **§5's state (iii) emptied**, for the first time since this file defined it. **No promotion, and the reasons are separable.** (a) **Stage 1's exit gate now reads met on its literal words and is recorded `NOT MET` anyway**, because Stage 1 asks Surface B for *honest* calibration and the page that shipped carries three claims that Apache-2.0 governs this code, on a repository whose `licenseInfo` is `null`. The unmet half changed from *Surface B is not live* to *Surface B is live and one of its claims is untrue*; what flips it is **Q-021**, not a build. **`STAGE_PLAYBOOK.md` Event 3 therefore did not fire and must not** — firing it would put a second Pumasi surface behind the same unbacked claim. (b) **Four repairs delivered is not evidence, it is the removal of four gaps**; coverage, data survival, PR-1 and the licence are all where they were. (c) **Q-024** is open fleet-wide and no gate figure is quoted from here into anything public. **No demotion**, and this is the closest call this file has had: the product acquired a live public misstatement, which is a real regression in what a stranger is told. It is not a *stage* regression — `alpha` already means *do not rely on it* and the ladder has no rung below that this product has outgrown — and rider (c) forbids moving the rung for a defect that a named steward question already owns. **§5 re-measured in full, not carried: five of seven rows moved.** Four retire — the sign-in 404, the envelope transitions, the `BETA` chip (which shipped reading **`ALPHA`**, derived from this file, exactly as `a49f594` designed), and the uncited competitor pricing (which shipped **cited**, dated 2026-08-31, linking both vendors and `MARKET.md`). **One got worse and is the reason this pass exists:** *"Apache-2.0 (Open Source)"* moved from state (iv) *merged and never shipped* to state **(i)** *wrong in source and in production*. **One is new:** a settings-only `PATCH` deletes the sender's message to signers, live in both trees, now `BACKLOG.md` **item 1**. **State (iii) refilled the same day it emptied**, with `2471a29`'s `expires_at` sweep, which is built and undeployed. **Coverage moved for the first time in four evaluations:** root `npm test` at `2471a29`, run twice by this seat at 02:03 and 02:05 UTC, `# pass 28`, `# fail 0`, `28 passing, 0 failing, from 5 compiled` — 21/four → **28/five**, and **A-415 is the first assertion in this repository to drive `service/src/worker.ts`**. **Corrections made to other seats' readings, all re-measured rather than inherited:** job `0064` dated the deploy *before* `1338f68` from a string that occurs nowhere in `frontend/src` — it is after; job `0064` reported *"`Apache-2.0 (Open Source)` three times"* — that string occurs once and `Apache-2.0` occurs three times in three **different** claims, which is worse; and job `0065`'s digest cites the three envelope guards at `:1367`/`:1575`/`:1636` where they are at **`:1383`**, **`:1591`**, **`:1652`** — the fourth stale `durable.ts` citation in four days, which is an argument about the practice and not about any seat. **Evidence added to `pumasi/DECISIONS.md` Q-021, Q-028 and Q-012; none closed, no deadline set, no default softened, and no `LICENSE` added or removed.** **Re-verified rather than carried:** the live host in full (bundle, route table, landing/`SendView`/`SignedOutView`/`EnvelopeDetailView`/`LoginView` chunks, the stylesheet, the deployment list and the handler list), `catalog.json` at `pumasi` @ `cdc0b9a` (still `seed`, still `updated: 2026-08-29`), `PRODUCT-RULES.md` still absent from `pumasi` main (**Q-017**, **eighth** consecutive evaluation), and PR-1 still unmet with its first observed cost — issue #15 arrived from the live product with thirteen diagnostic fields and no version, and there is no way for its reporter to have supplied one. **Still not closed:** rider (b) asks for 40 runs and this evaluation ran 2. |
 | 2026-09-01 | `alpha` (**unchanged** — seventh pass, **narrow corrective**, at `c23c7e6`) | **Not a full re-evaluation, and the header says so before any figure below is read.** Triggered by one published release note (`pumasi` `df8f0d0`, corrected at `df89865`) rather than by a re-measurement of the product. **The main event is that this file contradicted itself in public and a coder job found it.** The **Maturity gates** Stage 1 row still read *"Surface B has **never been deployed** — the live bundle registers no `landing` route at all **(§2.2)**"* — **citing §2.2 as its evidence while §2.2, the exit-gate section and §5 all recorded the deployment, dated it to the second and quoted the live route table.** Found by coder job `0075`, handed up as `priority: high`, and disclosed rather than repeated by `pumasi-web` `cd1fd2f`, whose card says in as many words *"The row is that file's to correct, not this one's."* **Corrected here; the verdict did not move.** The gate is **`NOT MET`** and stays `NOT MET` for the reason the exit-gate section has given since the sixth evaluation — **Surface B's honesty, not its existence** — and **`STAGE_PLAYBOOK.md` Event 3 did not fire and must not.** No promotion, no demotion, and none proposed. **Surface B re-verified live by this seat at 2026-09-01 03:27:13 UTC**: served bundle `/assets/index-CnoFAC2c.js`, route table's first entry ``{path:`/`,name:`landing`,…}``, `LandingView-C5khdw3s.js` 10 046 bytes with **three** `Apache-2.0` claims, `ls LICENSE*` → nothing, `licenseInfo: null` on a `PUBLIC` repository. **Q-021 is untouched, unanswered, and no `LICENSE` was added or removed.** **§0 rider (b) is answered for the first time since `d18d534`:** the fourth evaluation ran 1, the fifth 4, the sixth 2, and this pass ran **40 — 40 pass, 0 fail, byte-identical counts on every run** (`Test Files 6 (6)`, `Tests 85 (85)`, `# pass 31`, `# fail 0`, `31 passing, 0 failing, from 6 compiled`), 03:25:00–03:36:03 UTC, against the suite that exists today. **Coverage moved again: 28 across five files → 31 across six**, the three new assertions being **A-417–A-419** in `envelope-correction.test.ts`. **§5's last row moved (i) → (iii)** — `9659e69` fixed the settings-dialog message deletion in source, and the live bundle is unchanged since 01:02 UTC, so **state (iii) has two occupants and the undeployed set is four repairs deep** (Q-037's own count, carried). **§3's line 4 is struck where it claimed the `expires_at` deploy was *"the entire undeployed set"*.** **`BACKLOG.md` re-ranked in one move:** item 1 struck as **BUILT at `9659e69`, not delivered**, and a new **item 1 · deploy — operator action, not a build** now holds the four undeployed repairs in the build order instead of inside a *Retired* section; **the new top build entry is item 2**, test breadth, which the next coder packet takes. **What the repair cannot do is recorded rather than smoothed:** messages already deleted are gone, overwritten with `NULL`, no shadow copy. **Item 5 (`RISK_ZONES.yaml`) weighed for promotion and kept at 5** — three consecutive releases have now defaulted to `can_hurt` on its absence (Q-031, Q-035, Q-037) and Q-037 records two seats disagreeing on the merits, but Part 4's default fails safe every time and the entries above it each have a user on the other end. **Triage (duty 1):** one open issue, **#15**, already labelled `bug` · `feedback` · `rejected`; **no unlabelled issues**, so the duty is a no-op and is recorded as one rather than padded. **Not re-measured and explicitly carried:** §1, §2.1–§2.6, §4, CI, branch protection, `catalog.json`, the deployment list and the handler list. **No `DECISIONS.md` question was answered, closed, softened or dated; no deploy was made, proposed or scheduled; no dated row above this one was rewritten.** |
+| 2026-09-01 | `alpha` (**unchanged** — eighth pass, **narrow corrective**, at `efed763`) | **The main event is that a merge landed and no file in this repository knew it had.** Coder job `0080` merged `af617e1` → `efed763` — four commits, pushed, `GATE: PASS` — and the dispatcher then recorded the job **`FAILED: timed out after 5400s`**. The build is in `main`; only the wrap-up died. Judged here on the tree rather than on the dispatcher's verdict, which is why this row exists. **Coverage moved and it moved on the strand this page has leaned on hardest: 31 across six files → 38 across seven.** `07e0188` added `oauth-callback.test.ts` (**A-500**–**A-506**), driving *both* legs of `/api/auth/oauth/{google,microsoft}` through the real Durable Object with only the provider's token endpoint stubbed — **the OAuth callback was named in §2.1's *still covered by nothing* list at every evaluation since the fourth, and it has left that list.** The same commit renamed `e2e-workflow.test.ts` to **`stamping-multi-signer.test.ts`**, which strikes the one sentence this page had carried verbatim through four evaluations; `git diff -M` reports that file **`-1 / +24`** — one removal, the old test title, and no assertion, fixture or import moved. **Re-run by this seat at `efed763`, 2026-09-01 06:02–06:09 UTC: 3 runs, byte-identical, `Test Files 6 (6)`, `Tests 86 (86)`, `# pass 38`, `# fail 0`, `38 passing, 0 failing, from 7 compiled`** — the coder's self-report confirmed, not carried. **§0 rider (b) is not answered this pass and says so: 3 runs, not 40**, because 40 runs of a suite shape that no longer exists is not a determinism claim about the one that does. **No promotion, and the reasons are separable.** (a) **Stage 1's exit gate is still `NOT MET` on Surface B's honesty, unchanged and untouched** — the live bundle is still `/assets/index-CnoFAC2c.js`, re-`curl`ed **200** at **06:08:55 UTC**, still carrying three `Apache-2.0` claims on a repository with `licenseInfo: null`. What flips it is **Q-021**, not a build. **`STAGE_PLAYBOOK.md` Event 3 did not fire and must not.** (b) **Rider (c) forbids promoting on evidence strength**, and seven more assertions is evidence strength. (c) **Nothing user-visible changed** — `git diff f0d1912 -- service/src/durable.ts` is empty, no release note was owed and none was written — so **the undeployed set is still four repairs deep, not five**, and §5's state (iii) still has two occupants. **No demotion:** nothing regressed. **What the new coverage found, stated at the strength the evidence supports and no higher:** **A-502** measures that an `id_token` which *omits* `email_verified` is admitted — cookie, account row, `GET /api/auth/me` `200`. It is marked *recorded, not endorsed* in the test's own comment, `service/src/durable.ts` was **not** changed, and `spec/0009` §S3 names what evidence would raise it and says nobody gathered it. **This page does not use it as a promotion or demotion argument** and gives it a ranked home in `BACKLOG.md` item 2 instead. That is `A-302`'s precedent and item 2's *characterize, do not adjudicate* boundary, honoured. **Corrected here, each re-read against the tree rather than inherited:** §0 rider (a)'s contents row (four files → seven, superseded row kept as a dated record); rider (b)'s preamble and arm table (the `c23c7e6` 40-run row demoted to history, as the `d18d534` row was before it); §2.1's (ii) count; §2.1's *surviving sentence* bullet, **struck**; §2.1's *still covered by nothing* list, **re-measured by import rather than by grep** — `mail` and `worker` are substrings of `email` and `workerd`, and a grep over `service/src/test/` reports false coverage for both, which is how a list like this goes wrong. **The list shortened by one and did not empty:** `storage/r2.ts`, `mail.ts`, `feedback.ts` and `convert/graph.ts` are imported by **no test at all**, `worker.ts` only for A-415, and `durable.ts`'s envelope creation/copy, templates, admin, file routes and `finalize`'s stamping branch are untouched. **§5 gained a row:** `CLAUDE.md`'s *"`src/test/` holds two files"* is wrong in the file every agent here reads first, and `CLAUDE.md` is not in this role's may-write list — routed to the next coder packet taking item 2 and recorded rather than edited. **Triage (duty 1):** one open issue, **#15**, already labelled `bug` · `feedback` · `rejected`; **no unlabelled issues**, so the duty is a no-op and is recorded as one. **`PRODUCT-RULES.md` read fresh from `pumasi` branch `worktree-product-rules` `0115758` and still absent from `pumasi` main** — checked at `pumasi` @ `196b749`, **Q-017**, **tenth** consecutive evaluation; PR-1 and PR-2 unchanged, both gaps still ranked at `BACKLOG.md` items 4 and 3, and PR-1's user-visible clause re-confirmed unmet (`/api/version` → **404** at 06:08:55 UTC). **One fleet measurement handed up, not acted on:** job `0080` measured across seven review invocations that **qwen times out at curl's 600 s ceiling on a 150 KB code review** while answering correctly on 31–35 KB spec rounds, and that **grok is unreachable fleet-wide (HTTP 402)** — so with gemini and kimi spent on the spec, **glm was the only family that could review that code**, a breadth of one on a repository whose family table reports 5 of 6. That is **D-104**'s and `pumasi-ops`', not this seat's; it is recorded here because §3's `beta` argument leans on review breadth and the reader is entitled to know the breadth is one. **No `DECISIONS.md` question was answered, closed, softened or dated; no deploy was made, proposed, scheduled or assigned to anyone; no dated row above this one was rewritten; and no product code, spec or test was edited.** |

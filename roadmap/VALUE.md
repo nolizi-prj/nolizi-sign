@@ -161,7 +161,14 @@ project is built to notice.
   PDF stamper"**, and that stopped being true then. *Re-measured 2026-09-01
   (sixth evaluation):* the served tree's suite is **28 tests across five
   files**, three of which drive a real Durable Object and one of which drives
-  `service/src/worker.ts`.
+  `service/src/worker.ts`. *Re-measured again 2026-09-01 (eighth pass) at
+  `efed763`, over three runs at 06:02–06:09 UTC:* **38 assertions across seven
+  files** — `# pass 38 · # fail 0`, `38 passing, 0 failing, from 7 compiled` —
+  **four** of which drive a real Durable Object. **This is a claim about the
+  repository and not about the product**: the live bundle is unchanged
+  (`/assets/index-CnoFAC2c.js`, re-`curl`ed 06:08:55 UTC), so none of the
+  coverage this paragraph reports has ever run against what a user meets.
+  Q-018's default part (c).
   *Re-run 2026-09-01 (fifth evaluation) at `56a8bf8` and unchanged*, over four
   runs: `# pass 21 · # fail 0`. `STAGE.md` §2.1 carries the measurement.
   What holds the label back is what that coverage went and found — two defects
@@ -182,11 +189,20 @@ project is built to notice.
     envelope-settings dialog **deletes the sender's message to signers** on
     every save. `BACKLOG.md` **item 1**; `STAGE.md` §5.
 
-  Breadth is still missing (R2, mail, feedback, conversion, the OAuth
-  callback), which is `BACKLOG.md` **item 2** — though **`2471a29` closed the
-  sharpest strand**, covering `service/src/worker.ts` for the first time, and
-  took the served tree's suite from 21 across four files to **28 across
-  five**.
+  Breadth is still missing, which is `BACKLOG.md` **item 2** — and *updated
+  2026-09-01 (eighth pass), because one name has left this list*: **the OAuth
+  callback is covered**, at `07e0188`, on both provider legs through the real
+  Durable Object (`A-500`–`A-506`). What is still missing, re-measured **by
+  import rather than by grep** at `efed763`: **R2, mail, feedback and
+  conversion** — imported by no test at all — plus `worker.ts` beyond A-415 and
+  `durable.ts`'s envelope creation/copy, templates, admin, file routes and
+  `finalize`'s stamping branch. **The list shortened by one; it did not empty**,
+  and `finalize`'s stamping branch is the one that matters most to this file,
+  because it is the uncovered path that produces the artefact claim **C1**
+  promises. Two releases have now closed a strand of this entry: `2471a29`
+  covered `service/src/worker.ts` for the first time (21 across four → 28
+  across five), and `07e0188` covered the OAuth callback (31 across six → **38
+  across seven**).
 - **Not a QES / eIDAS-qualified signature.** The product produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware the product does not touch. (The landing page states
