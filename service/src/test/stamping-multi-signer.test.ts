@@ -1,9 +1,32 @@
+/**
+ * A second case for `core/stamping.ts`: two signers, four fields of three
+ * types, and the audit certificate appended to a document that already has a
+ * page. `stamping.test.ts` covers one signer; this covers the multi-signer
+ * shape, which is what most envelopes are.
+ *
+ * RENAMED at spec/0009 from `e2e-workflow.test.ts`, and the old name is the
+ * reason this comment exists. It was not an end-to-end test of anything: its
+ * imports are `node:test`, `node:assert/strict`, `pdf-lib` and
+ * `stampAndCertifyPdf` — identical to `stamping.test.ts` — and it calls no
+ * route, starts no worker and touches no store. Nothing about the file's
+ * behaviour changed with the name; the assertions below are byte-for-byte
+ * what they were. What changed is that a release note reporting `# pass 38`
+ * over a suite containing a file called `e2e-workflow` can no longer be
+ * read as a claim that anything was driven end to end. roadmap/BACKLOG.md
+ * item 2 asked for this in those terms; pumasi/lessons/L-006 is why it is
+ * not merely tidiness.
+ *
+ * The suite's only end-to-end coverage over HTTP remains the Playwright
+ * suite, and that one drives `backend/` — not the tree users meet. Stated
+ * here so the correction does not leave a reader believing the gap closed.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { stampAndCertifyPdf } from '../core/stamping.js';
 
-test('End-to-End Signing Workflow: Multi-Signer Agreement -> Stamping -> Audit Certificate Verification', async () => {
+test('stampAndCertifyPdf stamps a two-signer agreement and appends a parseable audit certificate', async () => {
   // 1. Arrange: Create a clean mock PDF contract
   const doc = await PDFDocument.create();
   const page = doc.addPage([612, 792]);

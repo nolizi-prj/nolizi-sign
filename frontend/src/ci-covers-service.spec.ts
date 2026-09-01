@@ -366,10 +366,32 @@ describe("A-109 · nothing is bought by deletion (S4)", () => {
     }
   });
 
+  // AMENDED by spec/0002 amendment 2 (spec/0009 §S5a), in the open and under
+  // pumasi/DECISIONS.md Q-030's default. `e2e-workflow.test.ts` was renamed to
+  // `stamping-multi-signer.test.ts` — same file, same assertions, a name that
+  // does not claim to be an end-to-end test. Two changes, neither of which
+  // weakens anything: the new spelling, and the count floor below.
+  //
+  // WHAT THE FLOOR IS AND IS NOT, because a spec reviewer objected to a draft
+  // that overclaimed it (reviews/20260831-231324-spec-qwen.md). It is `>= 2`.
+  // It does NOT notice an unlisted third file being deleted — seven files
+  // exist today and five would still pass. It holds exactly one thing: this
+  // directory cannot be emptied or cut below the two files this case froze,
+  // WHATEVER the survivors are called, so a packet that satisfies A-109 by
+  // deleting its filename list along with the files it names still fails.
+  // The per-file guarantee is assert-service-suite-ran.sh's src-vs-dist count
+  // (A-104), which is where it can live without a constant that goes stale.
   it("keeps both service/ test files", () => {
-    for (const file of ["stamping.test.ts", "e2e-workflow.test.ts"]) {
+    for (const file of ["stamping.test.ts", "stamping-multi-signer.test.ts"]) {
       expect(fs.existsSync(path.join(repoRoot, "service/src/test", file))).toBe(true);
     }
+  });
+
+  it("never holds fewer service/ test files than the two this case froze", () => {
+    const files = fs
+      .readdirSync(path.join(repoRoot, "service/src/test"))
+      .filter((f) => f.endsWith(".test.ts"));
+    expect(files.length).toBeGreaterThanOrEqual(2);
   });
 
   it("keeps the backend suite", () => {
