@@ -13,7 +13,7 @@
     // the worker — without this, the assets layer answers them with index.html.
     "run_worker_first": ["/api/*"]
   },
-  "routes": [{ "pattern": "sign.pumasi.ai", "custom_domain": true }],
+  "routes": [{ "pattern": "sign.nolizi.com", "custom_domain": true }],
   // The expiry sweep — src/worker.ts's `scheduled()` export. Hourly, because
   // this interval IS the length of time during which the Send wizard's
   // "the envelope stays open until completed or voided" is false for an
@@ -33,8 +33,8 @@
   ],
   "observability": { "enabled": true },
   "vars": {
-    "BASE_URL": "https://sign.pumasi.ai",
-    "GITHUB_FEEDBACK_REPO": "pumasi-ai/pumasi-sign"
+    "BASE_URL": "https://sign.nolizi.com",
+    "GITHUB_FEEDBACK_REPO": "nolizi-prj/nolizi-sign"
   },
   // Isolated pre-production environment. Bindings and vars are deliberately
   // repeated because Wrangler does not inherit them into named environments.
@@ -43,7 +43,7 @@
   "env": {
     "staging": {
       "name": "pumasi-sign-staging",
-      "routes": [{ "pattern": "sign-staging.pumasi.ai", "custom_domain": true }],
+      "routes": [{ "pattern": "sign-staging.nolizi.com", "custom_domain": true }],
       "r2_buckets": [
         { "binding": "DOCUMENTS", "bucket_name": "pumasi-sign-documents-staging" }
       ],
@@ -53,8 +53,8 @@
         ]
       },
       "vars": {
-        "BASE_URL": "https://sign-staging.pumasi.ai",
-        "GITHUB_FEEDBACK_REPO": "pumasi-ai/pumasi-sign"
+        "BASE_URL": "https://sign-staging.nolizi.com",
+        "GITHUB_FEEDBACK_REPO": "nolizi-prj/nolizi-sign"
       }
     }
   }
