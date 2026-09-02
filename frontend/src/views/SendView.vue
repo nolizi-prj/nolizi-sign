@@ -26,14 +26,15 @@ import { useUiStore } from "../store/ui";
 import { useDraftHandoffStore } from "../store/draftHandoff";
 import { userLabel } from "../utils/labels";
 import { roleColor, templateRoles } from "../utils/roleColors";
-import { UPLOAD_ACCEPT } from "../utils/uploads";
+import { validateSourceFiles } from "../utils/uploads";
 import { useFieldPlacement } from "../composables/useFieldPlacement";
 import PdfPage from "../components/PdfPage.vue";
 import PageThumbRail from "../components/PageThumbRail.vue";
 import FieldBox from "../components/FieldBox.vue";
 import FieldPropertiesPanel from "../components/FieldPropertiesPanel.vue";
+import FieldPalette from "../components/FieldPalette.vue";
 import NewTemplateDialog from "../components/NewTemplateDialog.vue";
-import { FIELD_TYPES, type FieldDef, type SubmissionOut, type TemplateOut, type User } from "../types";
+import { type FieldDef, type SubmissionOut, type TemplateOut, type User } from "../types";
 
 const props = defineProps<{ templateId?: string; draftId?: string }>();
 const router = useRouter();
@@ -126,6 +127,10 @@ function toOrder(orderNum: number): number {
 const adhocFile = ref<File | null>(null);
 const adhocPdfUrl = ref<string | null>(null);
 const adhocPageCount = ref(0);
+const previewOpen = ref(false);
+const previewPage = ref(0);
+const templatePreviewUrl = ref<string | null>(null);
+const previewLoading = ref(false);
 /** One entry per recipient; the internal role for index i is `signer-${i+1}`. */
 const adhocRecipients = ref<(number | null)[]>([null]);
 const adhocFields = ref<FieldDef[]>([]);
@@ -214,8 +219,23 @@ function fileStem(name: string): string {
 }
 
 async function onAdhocFilesChosen(picked: File | File[] | null): Promise<void> {
-  const files = (Array.isArray(picked) ? picked : picked ? [picked] : []).filter(Boolean);
+  const selected = (Array.isArray(picked) ? picked : picked ? [picked] : []).filter(Boolean);
+  // A picker can be opened repeatedly. Vuetify returns only the latest
+  // selection in that case, so retain existing documents and append new ones.
+  const files = [...adhocSourceFiles.value];
+  for (const file of selected) {
+    if (!files.includes(file)) files.push(file);
+  }
+  await rebuildAdhocDocument(files);
+}
+
+async function rebuildAdhocDocument(files: File[]): Promise<void> {
   const gen = ++adhocPickGen;
+  const sizeError = validateSourceFiles(files);
+  if (sizeError) {
+    errorMessage.value = sizeError;
+    return;
+  }
   clearAdhocPdf();
   adhocFile.value = null;
   adhocSourceFiles.value = files;
@@ -267,11 +287,11 @@ function moveSourceFile(index: number, delta: number): void {
   const moved = files.splice(index, 1)[0];
   if (!moved) return;
   files.splice(target, 0, moved);
-  void onAdhocFilesChosen(files);
+  void rebuildAdhocDocument(files);
 }
 
 function removeSourceFile(index: number): void {
-  void onAdhocFilesChosen(adhocSourceFiles.value.filter((_, i) => i !== index));
+  void rebuildAdhocDocument(adhocSourceFiles.value.filter((_, i) => i !== index));
 }
 
 function clearAdhocPdf(): void {
@@ -280,7 +300,42 @@ function clearAdhocPdf(): void {
   adhocPageCount.value = 0;
 }
 
-onBeforeUnmount(clearAdhocPdf);
+onBeforeUnmount(() => {
+  clearAdhocPdf();
+  if (templatePreviewUrl.value) URL.revokeObjectURL(templatePreviewUrl.value);
+});
+
+const previewUrl = computed(() => mode.value === "adhoc" ? adhocPdfUrl.value : templatePreviewUrl.value);
+const previewPageCount = computed(() => mode.value === "adhoc" ? adhocPageCount.value : (selectedTemplate.value?.page_count ?? 0));
+const previewFields = computed(() => {
+  const fields = mode.value === "adhoc" ? adhocFields.value : (selectedTemplate.value?.fields ?? []);
+  return fields.filter((field) => field.page === previewPage.value);
+});
+
+function previewFieldStyle(field: FieldDef): Record<string, string> {
+  return {
+    left: `${field.x * 100}%`, top: `${field.y * 100}%`,
+    width: `${field.w * 100}%`, height: `${field.h * 100}%`,
+    borderColor: field.type === "label" ? "#616161" : roleColor(field.role, roles.value),
+  };
+}
+
+async function openDocumentPreview(): Promise<void> {
+  previewPage.value = 0;
+  if (mode.value === "template" && selectedTemplate.value && !templatePreviewUrl.value) {
+    previewLoading.value = true;
+    try {
+      const { data } = await http.get<Blob>(`/files/template-pdf/${selectedTemplate.value.id}`, { responseType: "blob" });
+      templatePreviewUrl.value = URL.createObjectURL(data);
+    } catch (err) {
+      errorMessage.value = extractError(err);
+      return;
+    } finally {
+      previewLoading.value = false;
+    }
+  }
+  if (previewUrl.value) previewOpen.value = true;
+}
 
 function onAdhocPdfLoaded(count: number): void {
   adhocPageCount.value = count;
@@ -740,6 +795,7 @@ function duplicateAdhocField(id: string): void {
 
 const selectedFieldId = ref<string | null>(null);
 const selectedField = computed(() => adhocFields.value.find((f) => f.id === selectedFieldId.value) ?? null);
+const archiveRecipients = ref<string[]>([]);
 
 // A selected field on another page would be edited invisibly — deselect on paging.
 watch(adhocPage, () => {
@@ -752,12 +808,14 @@ async function load(): Promise<void> {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const [templatesRes, usersRes] = await Promise.all([
+    const [templatesRes, usersRes, archiveRes] = await Promise.all([
       http.get<TemplateOut[]>("/templates"),
       http.get<User[]>("/users"),
+      http.get<string[]>("/admin/archive-recipients"),
     ]);
     templates.value = templatesRes.data;
     users.value = usersRes.data;
+    archiveRecipients.value = archiveRes.data;
 
     if (props.draftId) {
       await loadDraft(props.draftId);
@@ -858,6 +916,12 @@ async function send(asDraft = false): Promise<void> {
   try {
     let created: SubmissionOut;
     if (mode.value === "template" && selectedTemplate.value) {
+      const signerEntries = roles.value.map((role) => ({
+        user_id: roleAssignments.value[role],
+        role,
+        order: toOrder(templateOrderNums.value[role] ?? 1),
+        is_cc: false,
+      }));
       const ccEntries = ccRows.value.map((row) => ({
         user_id: row.userId,
         order: toOrder(row.orderNum),
@@ -867,7 +931,8 @@ async function send(asDraft = false): Promise<void> {
         template_id: selectedTemplate.value.id,
         title: title.value.trim() || selectedTemplate.value.name,
         message: message.value.trim() || undefined,
-        role_assignments: roleAssignments.value,
+        signers: [...signerEntries, ...ccEntries],
+        draft: asDraft,
         expires_at: expiresAtIso(),
         reminders_enabled: remindersEnabled.value,
         reminder_interval_days: remindersEnabled.value ? reminderInterval.value : undefined,
@@ -895,10 +960,12 @@ async function send(asDraft = false): Promise<void> {
 
       const form = new FormData();
       form.append("file", adhocFile.value);
+      for (const document of adhocSourceFiles.value) form.append("documents", document);
       form.append("title", title.value.trim() || adhocFile.value.name.replace(/\.pdf$/i, ""));
       if (message.value.trim()) form.append("message", message.value.trim());
-      form.append("submitters", JSON.stringify([...submitters, ...ccEntries]));
-      form.append("fields", JSON.stringify(adhocFields.value));
+      form.append("signers_json", JSON.stringify([...submitters, ...ccEntries]));
+      form.append("fields_json", JSON.stringify(adhocFields.value));
+      form.append("draft", String(asDraft));
       const exp = expiresAtIso();
       if (exp) form.append("expires_at", exp);
       form.append("reminders_enabled", String(remindersEnabled.value));
@@ -969,7 +1036,7 @@ async function send(asDraft = false): Promise<void> {
         <v-row>
           <!-- One-off first: it's the common case; templates are the secondary path. -->
           <v-col cols="12" md="7">
-            <v-card variant="flat" border>
+            <v-card variant="flat" border class="wizard-card">
               <v-card-title class="text-subtitle-1">One-off document</v-card-title>
               <v-card-text>
                 <p class="text-body-2 text-medium-emphasis mb-3">
@@ -980,7 +1047,6 @@ async function send(asDraft = false): Promise<void> {
                   :model-value="adhocSourceFiles"
                   class="adhoc-file-input"
                   label="Documents (PDF, Office files, images, and more)"
-                  :accept="UPLOAD_ACCEPT"
                   prepend-icon="mdi-file-document-multiple-outline"
                   multiple
                   hint="Pick one or more files — they're combined into one document, in the order below."
@@ -1026,18 +1092,11 @@ async function send(asDraft = false): Promise<void> {
                   Preparing document…
                 </p>
                 <v-text-field v-if="adhocFile" v-model="title" label="Title" class="mt-1" />
-                <v-btn
-                  v-if="adhocFile"
-                  color="primary"
-                  variant="flat"
-                  block
-                  class="mt-2"
-                  :disabled="!canLeaveStep1"
-                  @click="step = 2"
-                >
-                  Continue
-                </v-btn>
               </v-card-text>
+              <v-card-actions v-if="adhocFile" class="wizard-actions">
+                <v-spacer />
+                <v-btn color="primary" variant="flat" :disabled="!canLeaveStep1" @click="step = 2">Continue</v-btn>
+              </v-card-actions>
             </v-card>
           </v-col>
           <v-col cols="12" md="5">
@@ -1078,7 +1137,7 @@ async function send(asDraft = false): Promise<void> {
       </template>
 
       <!-- Step 2: Signers (& message for template mode) -->
-      <v-card v-else-if="step === 2" variant="flat" border>
+      <v-card v-else-if="step === 2" variant="flat" border class="wizard-card">
         <v-card-title class="text-subtitle-1">
           {{ mode === "template" ? `${selectedTemplate?.name} — signers & message` : "Who needs to sign?" }}
         </v-card-title>
@@ -1332,7 +1391,7 @@ async function send(asDraft = false): Promise<void> {
             <template v-else>Without an expiration date, the envelope stays open until completed or voided.</template>
           </p>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="wizard-actions">
           <v-btn variant="text" @click="step = 1">Back</v-btn>
           <v-spacer />
           <span v-if="signersBlocker" class="text-caption text-medium-emphasis mr-3">{{ signersBlocker }}</span>
@@ -1341,7 +1400,7 @@ async function send(asDraft = false): Promise<void> {
       </v-card>
 
       <!-- Step 3 (ad-hoc only): Place fields -->
-      <v-card v-else-if="step === 3 && mode === 'adhoc'" variant="flat" border>
+      <v-card v-else-if="step === 3 && mode === 'adhoc'" variant="flat" border class="wizard-card">
         <v-card-title class="text-subtitle-1 d-flex align-center flex-wrap">
           <span>Place fields on the document</span>
           <v-spacer />
@@ -1359,17 +1418,6 @@ async function send(asDraft = false): Promise<void> {
               hide-details
               class="toolbar-select mr-3"
             />
-            <v-btn
-              v-for="ft in FIELD_TYPES"
-              :key="ft"
-              size="small"
-              class="mr-1 mb-1 text-capitalize"
-              :variant="placingType === ft ? 'flat' : 'tonal'"
-              :color="placingType === ft ? 'primary' : undefined"
-              @click="togglePlacing(ft)"
-            >
-              {{ ft }}
-            </v-btn>
           </div>
           <p v-if="placingType" class="text-caption text-medium-emphasis mb-2">
             Click and drag on the page to place a {{ placingType }} field for
@@ -1377,6 +1425,9 @@ async function send(asDraft = false): Promise<void> {
           </p>
 
           <div class="d-flex placement-layout">
+            <div class="palette-col">
+              <FieldPalette :active-type="placingType" @select="togglePlacing" />
+            </div>
             <PageThumbRail
               v-if="adhocPdfUrl"
               :src="adhocPdfUrl"
@@ -1443,7 +1494,7 @@ async function send(asDraft = false): Promise<void> {
             </div>
           </div>
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="wizard-actions">
           <v-btn variant="text" @click="step = 2">Back</v-btn>
           <v-spacer />
           <v-btn color="primary" variant="flat" :disabled="!canProceedFrom(3)" @click="step = 4">Continue</v-btn>
@@ -1452,7 +1503,13 @@ async function send(asDraft = false): Promise<void> {
 
       <!-- Review & send -->
       <v-card v-else-if="step === reviewStep" variant="flat" border>
-        <v-card-title class="text-subtitle-1">Review &amp; send</v-card-title>
+        <v-card-title class="text-subtitle-1 d-flex align-center">
+          <span>Review &amp; send</span>
+          <v-spacer />
+          <v-btn variant="tonal" prepend-icon="mdi-eye-outline" :loading="previewLoading" @click="openDocumentPreview">
+            Preview document
+          </v-btn>
+        </v-card-title>
         <v-card-text>
           <v-list density="compact">
             <v-list-item prepend-icon="mdi-file-document-outline" :title="title">
@@ -1517,6 +1574,10 @@ async function send(asDraft = false): Promise<void> {
               CC recipients get a copy right away and the signed PDF when everyone's done.
             </template>
           </v-alert>
+          <v-alert v-if="archiveRecipients.length" type="warning" variant="tonal" density="compact" class="mt-2">
+            Workspace archive: when signing is complete, the executed PDF and certificate will automatically be emailed to
+            {{ archiveRecipients.join(", ") }}.
+          </v-alert>
         </v-card-text>
         <v-card-actions>
           <v-btn variant="text" @click="step = reviewStep - 1">Back</v-btn>
@@ -1544,6 +1605,33 @@ async function send(asDraft = false): Promise<void> {
       </v-card>
 
       <NewTemplateDialog v-model="newTemplateDialog" />
+
+      <v-dialog v-model="previewOpen" max-width="900">
+        <v-card>
+          <v-card-title class="d-flex align-center">
+            <span>Document preview</span><v-spacer />
+            <v-btn icon="mdi-close" variant="text" aria-label="Close preview" @click="previewOpen = false" />
+          </v-card-title>
+          <v-card-text class="document-preview-stage">
+            <PdfPage v-if="previewUrl" :src="previewUrl" :page="previewPage">
+              <div
+                v-for="field in previewFields"
+                :key="field.id"
+                class="preview-field"
+                :style="previewFieldStyle(field)"
+              >
+                {{ field.type === "signature" ? "Sign here" : field.type }}
+              </div>
+            </PdfPage>
+          </v-card-text>
+          <v-card-actions>
+            <v-btn :disabled="previewPage === 0" prepend-icon="mdi-chevron-left" @click="previewPage--">Previous</v-btn>
+            <span class="text-caption mx-3">Page {{ previewPage + 1 }} of {{ previewPageCount }}</span>
+            <v-btn :disabled="previewPage + 1 >= previewPageCount" append-icon="mdi-chevron-right" @click="previewPage++">Next</v-btn>
+            <v-spacer /><v-btn variant="flat" color="primary" @click="previewOpen = false">Done</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <v-dialog v-model="addSignerOpen" max-width="440" persistent>
         <v-card>
@@ -1686,6 +1774,11 @@ async function send(asDraft = false): Promise<void> {
   flex: none;
 }
 
+.palette-col {
+  width: 180px;
+  flex: none;
+}
+
 .placement-catcher {
   position: absolute;
   inset: 0;
@@ -1701,4 +1794,10 @@ async function send(asDraft = false): Promise<void> {
 .message-preview {
   white-space: pre-wrap;
 }
+
+.wizard-card { max-height: calc(100vh - 205px); display: flex; flex-direction: column; }
+.wizard-card > :deep(.v-card-text) { overflow-y: auto; }
+.wizard-actions { flex: none; z-index: 4; background: rgb(var(--v-theme-surface)); border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.document-preview-stage { max-height: 72vh; overflow-y: auto; background: #eef1f5; }
+.preview-field { position: absolute; display: flex; align-items: center; padding: 0 3px; overflow: hidden; border: 1.5px solid; border-radius: 2px; background: rgba(255, 255, 255, .75); font-size: 10px; text-transform: capitalize; }
 </style>

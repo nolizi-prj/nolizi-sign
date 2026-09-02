@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { stampAndCertifyPdf } from '../core/stamping.js';
+import { makePdf, readPdf } from './support/pdf-probe.js';
 
 test('stampAndCertifyPdf stamps fields and appends cryptographic audit certificate', async () => {
   // 1. Create a blank test PDF document
@@ -86,4 +87,37 @@ test('stampAndCertifyPdf stamps fields and appends cryptographic audit certifica
   // Verify the resulting PDF can be loaded cleanly
   const verifiedDoc = await PDFDocument.load(result.stampedPdfBytes);
   assert.equal(verifiedDoc.getPageCount(), 2);
+});
+
+test('stampAndCertifyPdf affixes the public envelope ID to every executed document page', async () => {
+  const envelopeUid = '7f41cc1b0b2440e59f4d447372cd0ec8';
+  const originalPdfBytes = await makePdf(['EMPLOYMENT OFFER', 'OFFER TERMS']);
+  const benefitPdfBytes = await makePdf(['BENEFIT SUMMARY']);
+
+  const result = await stampAndCertifyPdf({
+    originalPdfBytes,
+    fields: [],
+    signers: [],
+    envelopeUid,
+    documentTitle: 'Employment package',
+    completedAt: '2026-09-02T12:30:00Z',
+    attachments: [{
+      filename: 'benefits.pdf',
+      contentType: 'application/pdf',
+      bytes: benefitPdfBytes,
+    }],
+  });
+
+  const probe = await readPdf(result.stampedPdfBytes);
+  const expected = `Pumasi Sign Envelope ID: ${envelopeUid}`;
+
+  assert.equal(probe.pageCount, 4, 'three document pages plus the certificate');
+  for (const [index, page] of probe.pages.slice(0, -1).entries()) {
+    assert.ok(page.includes(expected), `executed document page ${index + 1} carries the envelope ID`);
+  }
+  assert.equal(
+    probe.pages.at(-1)?.filter((text) => text.includes(envelopeUid)).length,
+    1,
+    'the certificate retains its own canonical Envelope ID line without a duplicate page stamp',
+  );
 });

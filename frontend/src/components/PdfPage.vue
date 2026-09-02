@@ -12,6 +12,12 @@ import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
+// A malformed or poster-sized PDF page must not allocate a canvas large
+// enough to kill the tab. 16M RGBA pixels is already ~64 MB before browser
+// overhead; cap DPR as well because 3x/4x displays otherwise multiply it.
+const MAX_CANVAS_PIXELS = 16_000_000;
+const MAX_RENDER_DPR = 2;
+
 const props = defineProps<{
   /** Blob URL of the PDF document. */
   src: string;
@@ -116,9 +122,10 @@ async function renderPage(): Promise<void> {
     const pdfPage = await doc.getPage(props.page + 1);
     const containerWidth = container.clientWidth;
     const unscaledViewport = pdfPage.getViewport({ scale: 1 });
-    const fitScale = containerWidth > 0 ? containerWidth / unscaledViewport.width : 1;
-    const viewport = pdfPage.getViewport({ scale: fitScale });
-    const dpr = window.devicePixelRatio || 1;
+    const widthScale = containerWidth > 0 ? containerWidth / unscaledViewport.width : 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR);
+    const pixelSafeScale = Math.sqrt(MAX_CANVAS_PIXELS / (unscaledViewport.width * unscaledViewport.height * dpr * dpr));
+    const viewport = pdfPage.getViewport({ scale: Math.min(widthScale, pixelSafeScale) });
 
     canvas.width = Math.round(viewport.width * dpr);
     canvas.height = Math.round(viewport.height * dpr);

@@ -1,6 +1,6 @@
 /**
  * Native High-Fidelity Office 365 Document Conversion via Microsoft Graph API.
- * Converts .docx, .doc, .pptx, .ppt, .xlsx files directly into native PDF via Microsoft's cloud rendering engine.
+ * Converts Microsoft Graph's documented PDF source formats through its cloud rendering engine.
  */
 
 export interface GraphConvertConfig {
@@ -10,7 +10,12 @@ export interface GraphConvertConfig {
   driveId: string;
 }
 
-export const SUPPORTED_OFFICE_FORMATS = new Set(['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls']);
+export const SUPPORTED_OFFICE_FORMATS = new Set([
+  'doc', 'docx', 'dot', 'dotm', 'dotx',
+  'eml', 'epub', 'htm', 'html', 'md', 'markdown', 'msg',
+  'odp', 'ods', 'odt', 'pps', 'ppsx', 'ppt', 'pptx', 'rtf',
+  'tif', 'tiff', 'xls', 'xlsm', 'xlsx',
+]);
 
 /**
  * Acquire Microsoft Graph application-only OAuth2 Bearer token

@@ -186,13 +186,12 @@ test("admin builds a template, sends it, both signers sign, and the completed PD
     await drawSignature(page);
     await page.getByRole("dialog").getByRole("button", { name: /Adopt/i }).click();
 
-    // Finish opens the review-and-consent dialog; completion requires the
-    // explicit e-signature consent checkbox.
-    await page.getByRole("button", { name: "Finish" }).click();
-    const review = page.getByRole("dialog");
-    await expect(review.getByText("Review before signing")).toBeVisible();
-    await review.getByRole("checkbox").check({ force: true });
-    await review.getByRole("button", { name: "Sign & finish" }).click();
+    // Preview mode keeps the actual document visible, removes editing chrome,
+    // and requires explicit e-signature consent before completion.
+    await page.getByRole("button", { name: "Preview & finish" }).click();
+    await expect(page.getByText("Final document preview")).toBeVisible();
+    await page.getByLabel(/electronic records|legally binding/i).check({ force: true });
+    await page.getByRole("button", { name: "Sign & finish" }).click();
     await expect(page.getByText("Thanks")).toBeVisible();
   }
 

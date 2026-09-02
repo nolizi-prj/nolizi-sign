@@ -28,11 +28,13 @@ a v2. Each one implements the whole product on its own.
 | **Its design docs** | [`spec/`](spec/) — one numbered folder per change, with frozen acceptance cases | [`docs/superpowers/specs/`](docs/superpowers/specs/) |
 | **How it deploys** | `wrangler deploy` from `service/` | Docker image → Railway (see [below](#deploying-backend--railway-not-what-users-reach)) |
 
-**Which of the two *is* Pumasi Sign is an open question** —
-[`pumasi/DECISIONS.md`](https://github.com/pumasi-ai/pumasi/blob/main/DECISIONS.md)
-**Q-018** — and it belongs to the steward. This file does not answer it, and
-neither should a change you make: do not delete either tree, re-point the
-domain, or migrate data on your own authority.
+**The product owner selected the Cloudflare implementation as the canonical
+Pumasi Sign backend on 2026-09-01.** New product work targets `service/` and
+`frontend/`; `backend/` remains a temporary behavioral reference while required
+capabilities are ported. This does not authorize deleting either tree,
+re-pointing the domain, deploying, or migrating data without a separately scoped
+change. See the [architecture decision](docs/CLOUDFLARE_ARCHITECTURE_DECISION.md)
+and [production capability matrix](docs/CLOUDFLARE_CAPABILITY_MATRIX.md).
 
 What is *not* in dispute is which of the two answers the domain, and it takes
 one command to re-measure:
@@ -60,9 +62,10 @@ comes back is the worker's — FastAPI answers `{"detail": …}`, never
   [`auth.py:206`](backend/app/routers/auth.py#L206)). The worker's
   `establishSession`
   ([`service/src/durable.ts:664`](service/src/durable.ts#L664)) is a
-  find-or-create for *any* verified email, with no domain gate at all. Which
-  behaviour is correct is the second half of Q-018. **Fix a bug in the tree you
-  were actually asked about**, and say which one in the commit message.
+  find-or-create for *any* verified email, with no domain gate. That Worker
+  behavior is now canonical; the FastAPI restriction is legacy behavior, not a
+  product requirement. **Fix product bugs in `service/`**, and use `backend/`
+  only as a reference unless a task explicitly says otherwise.
 - **Merged is not shipped.** Who carries a merged, gate-passed build to
   `sign.pumasi.ai` is `pumasi/DECISIONS.md` **Q-012**, which is open. Do not
   read a merge, or a green job, as something a user has received.
@@ -244,9 +247,9 @@ pull request, **four jobs**:
 
 **Everything from here to the licence note is about `backend/`, which is
 accurate about `backend/` and is not what `sign.pumasi.ai` runs.** It is kept
-because the tree is maintained, tested and deployable, and because Q-018 has
-not been answered. **If you follow this section end to end you will have
-deployed something that is not the product** — Q-018 says so in as many words:
+temporarily as a behavioral reference while required capabilities are ported.
+**If you follow this section end to end you will have deployed something that
+is not the product**:
 a run that follows the Railway path "would deploy a tree no user reaches and
 report it as shipped".
 
@@ -324,7 +327,7 @@ in Railway (`railway variables`).
 | `MAIL_SENDER` | Address mail is sent from via Microsoft Graph (`Mail.Send`, app-only) |
 | `SESSION_SECRET` | Signing key for the session and auth-flow cookies (`itsdangerous`) — generate with `openssl rand -hex 32` |
 | `ADMIN_EMAILS` | Comma-separated list of emails auto-granted `is_admin` on first login (and promoted, never demoted, on later logins) |
-| `ALLOWED_EMAIL_DOMAINS` | Comma-separated email domains allowed to use magic-link email login (default `pumasi.ai`). **The worker has no equivalent gate — see Q-018** |
+| `ALLOWED_EMAIL_DOMAINS` | Legacy FastAPI-only restriction for magic-link login (default `pumasi.ai`). The canonical Worker admits any verified email. |
 | `JOB_TOKEN` | Shared secret required in the `X-Job-Token` header by `POST /api/jobs/daily` — generate with `openssl rand -hex 32` |
 | `DATABASE_URL` | SQLAlchemy-style Postgres URL, e.g. `postgresql+psycopg://user:pass@host:port/db` |
 | `DATA_DIR` | Root directory for uploaded/generated files and backups (default `/data`; the Railway volume mount point) |
@@ -436,17 +439,17 @@ it already held the Mail.Send grant.
 builders*. Concretely, at the time of writing, and each one tracked where it
 says:
 
-- **A deadline a sender sets is not acted on.** The SPA tells senders that
-  without an expiration date an envelope stays open until completed or voided —
-  and the worker has no scheduled handler at all:
-  `grep -n 'scheduled\|crons' service/src/worker.ts service/wrangler.jsonc`
-  returns nothing. [`roadmap/BACKLOG.md`](roadmap/BACKLOG.md) item 1.
+- **Expiration depends on the configured Cloudflare cron.** The Worker contains
+  the expiry sweep and `service/wrangler.jsonc` schedules it hourly; staging and
+  production still need cron-failure monitoring and a recorded smoke test.
 - **A merged fix reaches users at no defined time.** Deployment has no owner
   (Q-012). Read [`roadmap/STAGE.md`](roadmap/STAGE.md) §5 before assuming a
   repair on `main` is a repair a user has received.
-- **There is no stated retention or backup posture** for the Durable Object
-  store or the R2 bucket. "Your data survives" is not a claim this project has
-  established. [`roadmap/STAGE.md`](roadmap/STAGE.md) §2.4.
+- **Recovery is specified but not yet demonstrated with account resources.**
+  Durable Object point-in-time recovery and independent R2 artifact backups must
+  pass the drill in
+  [`docs/operations/CLOUDFLARE_RELEASE_AND_RECOVERY.md`](docs/operations/CLOUDFLARE_RELEASE_AND_RECOVERY.md)
+  before a public release.
 - **This is not a qualified (QES / eIDAS) signature.** It produces an advanced
   electronic signature with a hash-based audit certificate; qualified
   signatures need hardware this product does not touch.

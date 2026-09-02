@@ -4,13 +4,14 @@
  * Captures diagnostics and page preview, supports paste/upload, and submits to GitHub issues.
  * Features both floating screen trigger and optional navbar button.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import html2canvas from "html2canvas";
+import { domToBlob } from "modern-screenshot";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
 import { useBrandingStore } from "../store/branding";
 import http, { extractError } from "../utils/http";
+import { APP_BUILD_TIME, APP_COMMIT, APP_ENVIRONMENT, APP_VERSION } from "../version";
 
 interface ErrorItem {
   message: string;
@@ -39,12 +40,13 @@ const opening = ref(false);
 const message = ref("");
 const userEmail = ref("");
 const feedbackType = ref<"bug" | "enhancement" | "question">("bug");
-const screenshot = ref<File | File[] | null>(null);
+const attachments = ref<File[]>([]);
 const submitting = ref(false);
 const error = ref("");
 const successIssueUrl = ref<string | null>(null);
-const previewUrl = ref<string | null>(null);
+const previewUrls = ref<string[]>([]);
 const screenshotIsAuto = ref(false);
+const fullPreviewIndex = ref<number | null>(null);
 const contextSnapshot = ref<Record<string, string | number | boolean | null | undefined> | null>(null);
 const errLog = ref<ErrorItem[]>([]);
 
@@ -78,34 +80,25 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("error", errorHandler);
   window.removeEventListener("unhandledrejection", rejectionHandler);
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value);
-  }
+  previewUrls.value.forEach((url) => URL.revokeObjectURL(url));
 });
 
-const screenshotFile = computed<File | null>(() => {
-  const value = screenshot.value;
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value;
-});
-
-watch(screenshotFile, (file, previous) => {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value);
-    previewUrl.value = null;
-  }
-  if (file) {
-    previewUrl.value = URL.createObjectURL(file);
-  }
-  if (previous !== undefined && file?.name !== "page-screenshot.jpg") {
+watch(attachments, (files, previous) => {
+  previewUrls.value.forEach((url) => URL.revokeObjectURL(url));
+  previewUrls.value = files.map((file) => URL.createObjectURL(file));
+  if (previous !== undefined && files.some((file) => file.name !== "page-screenshot.jpg")) {
     screenshotIsAuto.value = false;
   }
-});
+}, { deep: true });
 
 function buildContext(): Record<string, string | number | boolean | null | undefined> {
   const nav = navigator as any;
   return {
     Page: route.fullPath,
+    Version: `Pumasi Sign v${APP_VERSION}`,
+    Build: APP_COMMIT,
+    Environment: APP_ENVIRONMENT,
+    BuildTime: APP_BUILD_TIME,
     URL: window.location.href,
     User: auth.me ? `${auth.me.name} <${auth.me.email}>` : (userEmail.value.trim() || "Anonymous"),
     Browser: navigator.userAgent,
@@ -150,21 +143,18 @@ function drawFallbackCanvas(): File | null {
 
 async function capturePage(): Promise<File | null> {
   try {
-    const canvas = await html2canvas(document.body, {
-      logging: false,
-      useCORS: true,
-      scale: Math.min(window.devicePixelRatio || 1, 1.5),
-      x: window.scrollX,
-      y: window.scrollY,
+    const app = document.querySelector<HTMLElement>("#app");
+    if (!app) return drawFallbackCanvas();
+    const blob = await domToBlob(app, {
+      type: "image/jpeg",
+      quality: 0.82,
+      scale: 1,
       width: document.documentElement.clientWidth,
       height: document.documentElement.clientHeight,
+      backgroundColor: "#ffffff",
+      maximumCanvasSize: 16_000_000,
     });
-    for (const quality of [0.85, 0.6, 0.4]) {
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-      if (blob && blob.size <= MAX_SCREENSHOT_BYTES) {
-        return new File([blob], "page-screenshot.jpg", { type: "image/jpeg" });
-      }
-    }
+    if (blob.size <= MAX_SCREENSHOT_BYTES) return new File([blob], "page-screenshot.jpg", { type: "image/jpeg" });
     return drawFallbackCanvas();
   } catch {
     return drawFallbackCanvas();
@@ -184,7 +174,7 @@ async function openFeedback(): Promise<void> {
   // Set fallback snapshot immediately for zero delay
   const fallback = drawFallbackCanvas();
   if (fallback) {
-    screenshot.value = fallback;
+    attachments.value = [fallback];
     screenshotIsAuto.value = true;
   }
   open.value = true;
@@ -193,14 +183,21 @@ async function openFeedback(): Promise<void> {
   // Enhance with real html2canvas asynchronously in background
   capturePage().then((captured) => {
     if (captured && screenshotIsAuto.value) {
-      screenshot.value = captured;
+      attachments.value = [captured];
     }
   });
 }
 
-function removeScreenshot(): void {
-  screenshot.value = null;
+function removeAttachment(index: number): void {
+  attachments.value = attachments.value.filter((_, fileIndex) => fileIndex !== index);
   screenshotIsAuto.value = false;
+}
+
+function onAttachmentsSelected(files: File | File[] | null): void {
+  const selected = Array.isArray(files) ? files : files ? [files] : [];
+  attachments.value = selected.slice(0, 5);
+  screenshotIsAuto.value = false;
+  if (selected.length > 5) error.value = "You can attach up to 5 images.";
 }
 
 function onPaste(event: ClipboardEvent): void {
@@ -211,7 +208,12 @@ function onPaste(event: ClipboardEvent): void {
       const pasted = item.getAsFile();
       if (!pasted) continue;
       event.preventDefault();
-      screenshot.value = new File([pasted], "pasted-screenshot.png", { type: pasted.type });
+      if (attachments.value.length >= 5) {
+        error.value = "You can attach up to 5 images.";
+        return;
+      }
+      if (screenshotIsAuto.value) attachments.value = [];
+      attachments.value = [...attachments.value, new File([pasted], `pasted-screenshot-${attachments.value.length + 1}.png`, { type: pasted.type })];
       screenshotIsAuto.value = false;
       return;
     }
@@ -221,17 +223,21 @@ function onPaste(event: ClipboardEvent): void {
 function cancel(): void {
   open.value = false;
   message.value = "";
-  screenshot.value = null;
+  attachments.value = [];
   screenshotIsAuto.value = false;
   contextSnapshot.value = null;
   error.value = "";
   successIssueUrl.value = null;
+  fullPreviewIndex.value = null;
 }
 
 async function submit(): Promise<void> {
-  const file = screenshotFile.value;
-  if (file && file.size > MAX_SCREENSHOT_BYTES) {
-    error.value = "Screenshot must be 4 MB or smaller.";
+  if (attachments.value.length > 5) {
+    error.value = "You can attach up to 5 images.";
+    return;
+  }
+  if (attachments.value.some((file) => file.size > MAX_SCREENSHOT_BYTES)) {
+    error.value = "Each attachment must be 4 MB or smaller.";
     return;
   }
   submitting.value = true;
@@ -245,14 +251,14 @@ async function submit(): Promise<void> {
     if (userEmail.value.trim()) {
       form.append("userEmail", userEmail.value.trim());
     }
-    if (file) {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
+    for (const file of attachments.value) {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       });
-      const base64Data = await base64Promise;
-      form.append("screenshot", base64Data);
+      form.append("attachments", base64Data);
     }
     if (contextSnapshot.value) {
       form.append("context", JSON.stringify(contextSnapshot.value));
@@ -297,7 +303,12 @@ async function submit(): Promise<void> {
 
   <!-- Interactive Feedback & Diagnostic Dialog -->
   <v-dialog v-model="open" max-width="560">
-    <v-card title="💬 Send Feedback & Report Issues" @paste="onPaste">
+    <v-card
+      title="💬 Send Feedback & Report Issues"
+      @paste="onPaste"
+      @keydown.ctrl.enter.prevent="message.trim() && !submitting && submit()"
+      @keydown.meta.enter.prevent="message.trim() && !submitting && submit()"
+    >
       <v-card-text>
         <v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert>
 
@@ -351,24 +362,38 @@ async function submit(): Promise<void> {
 
         <!-- Screenshot Attachment & Preview -->
         <v-file-input
-          v-model="screenshot"
-          label="Screenshot & Attachment (optional)"
+          :model-value="attachments"
+          label="Screenshots & Attachments (optional, up to 5)"
           accept="image/png,image/jpeg,image/webp"
+          multiple
+          chips
+          show-size
           prepend-icon="mdi-camera"
           density="comfortable"
           hint="Press Ctrl+V anywhere in this dialog to paste a screenshot"
           persistent-hint
+          @update:model-value="onAttachmentsSelected"
         />
 
-        <div v-if="previewUrl" class="d-flex align-center mt-2 pa-2 border rounded bg-grey-lighten-4">
-          <v-img :src="previewUrl" max-width="140" max-height="90" class="rounded border" />
-          <div class="ml-3">
-            <p v-if="screenshotIsAuto" class="text-caption text-medium-emphasis mb-1">
-              Live page preview attached automatically.
-            </p>
-            <v-btn size="small" variant="text" color="error" prepend-icon="mdi-close" @click="removeScreenshot">
-              Remove Screenshot
-            </v-btn>
+        <div v-if="previewUrls.length" class="feedback-previews mt-2">
+          <div v-for="(url, index) in previewUrls" :key="url" class="feedback-preview pa-2 border rounded bg-grey-lighten-4">
+            <v-img
+              :src="url"
+              width="112"
+              height="72"
+              cover
+              class="rounded border feedback-preview-image"
+              role="button"
+              tabindex="0"
+              aria-label="Open attachment full size"
+              @click="fullPreviewIndex = index"
+              @keyup.enter="fullPreviewIndex = index"
+            />
+            <div class="feedback-preview-copy">
+              <p class="text-caption text-truncate mb-1">{{ attachments[index]?.name }}</p>
+              <p v-if="screenshotIsAuto && index === 0" class="text-caption text-medium-emphasis mb-1">Live page preview</p>
+              <v-btn size="x-small" variant="text" color="error" prepend-icon="mdi-close" @click="removeAttachment(index)">Remove</v-btn>
+            </div>
           </div>
         </div>
 
@@ -409,7 +434,26 @@ async function submit(): Promise<void> {
           :loading="submitting"
           @click="submit"
         >
-          Submit Feedback &rarr;
+          Submit Feedback <span class="ml-2 text-caption">Ctrl+Enter</span>
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog :model-value="fullPreviewIndex !== null" max-width="1100" @update:model-value="fullPreviewIndex = null">
+    <v-card v-if="fullPreviewIndex !== null">
+      <v-card-title class="d-flex align-center">
+        <span class="text-truncate">{{ attachments[fullPreviewIndex]?.name }}</span>
+        <v-spacer />
+        <v-btn icon="mdi-close" variant="text" aria-label="Close image preview" @click="fullPreviewIndex = null" />
+      </v-card-title>
+      <v-card-text class="full-preview-stage">
+        <img :src="previewUrls[fullPreviewIndex]" alt="Full-size feedback attachment" />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn :href="previewUrls[fullPreviewIndex]" :download="attachments[fullPreviewIndex]?.name" prepend-icon="mdi-download">
+          Download
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -418,6 +462,12 @@ async function submit(): Promise<void> {
 
 <style scoped>
 /* Persistent Floating Action Button on Bottom-Right */
+.feedback-previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.feedback-preview { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.feedback-preview-copy { min-width: 0; flex: 1; }
+.feedback-preview-image { cursor: zoom-in; }
+.full-preview-stage { max-height: 75vh; overflow: auto; text-align: center; background: #f2f4f7; }
+.full-preview-stage img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .pf-floating-wrap {
   position: fixed;
   bottom: 24px;

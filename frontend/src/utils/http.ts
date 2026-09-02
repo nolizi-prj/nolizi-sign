@@ -58,8 +58,10 @@ http.interceptors.response.use(
 
 /** Human-readable message from an axios error's `detail`, with a generic fallback. */
 export function extractError(err: unknown): string {
-  if (axios.isAxiosError(err) && typeof err.response?.data?.detail === "string") {
-    return err.response.data.detail as string;
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { detail?: unknown; error?: unknown } | undefined;
+    if (typeof data?.detail === "string") return data.detail;
+    if (typeof data?.error === "string") return data.error;
   }
   return "Something went wrong. Please try again.";
 }

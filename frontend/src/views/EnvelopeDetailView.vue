@@ -15,7 +15,6 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
-import { UPLOAD_ACCEPT } from "../utils/uploads";
 import { useAuthStore } from "../store/auth";
 import { useUiStore } from "../store/ui";
 import {
@@ -327,23 +326,23 @@ async function confirmCancel(): Promise<void> {
 // --- replace document (DocuSign-style Correct) -------------------------------
 
 const replaceDocDialog = ref(false);
-const replaceDocFile = ref<File | null>(null);
+const replaceDocFiles = ref<File[]>([]);
 const replaceDocSubmitting = ref(false);
 const replaceDocError = ref<string | null>(null);
 
 function openReplaceDocDialog(): void {
-  replaceDocFile.value = null;
+  replaceDocFiles.value = [];
   replaceDocError.value = null;
   replaceDocDialog.value = true;
 }
 
 async function confirmReplaceDoc(): Promise<void> {
-  if (replaceDocSubmitting.value || !replaceDocFile.value) return;
+  if (replaceDocSubmitting.value || replaceDocFiles.value.length === 0) return;
   replaceDocSubmitting.value = true;
   replaceDocError.value = null;
   try {
     const formData = new FormData();
-    formData.append("file", replaceDocFile.value);
+    for (const file of replaceDocFiles.value) formData.append("documents", file);
     await http.post(`/submissions/${props.id}/replace-document`, formData);
     replaceDocDialog.value = false;
     ui.toast(isDraft.value ? "Document replaced in the draft." : "Document replaced — signers will see the new version.");
@@ -353,6 +352,20 @@ async function confirmReplaceDoc(): Promise<void> {
   } finally {
     replaceDocSubmitting.value = false;
   }
+}
+
+function moveReplacement(index: number, delta: number): void {
+  const target = index + delta;
+  if (target < 0 || target >= replaceDocFiles.value.length) return;
+  const files = [...replaceDocFiles.value];
+  const [file] = files.splice(index, 1);
+  if (!file) return;
+  files.splice(target, 0, file);
+  replaceDocFiles.value = files;
+}
+
+function removeReplacement(index: number): void {
+  replaceDocFiles.value = replaceDocFiles.value.filter((_, i) => i !== index);
 }
 
 const correctDialog = ref(false);
@@ -1012,11 +1025,11 @@ const EVENT_ICONS: Record<string, string> = {
         <v-card-text>
           <p class="text-body-2 text-medium-emphasis mb-3">
             <template v-if="isDraft">
-              The new file replaces this draft's document; all signature fields keep their current
+              The new documents replace this draft's document set; all signature fields keep their current
               positions. Nobody is notified — the draft hasn't been sent.
             </template>
             <template v-else>
-              The new file replaces the document for everyone; all signature fields keep their
+              The new documents replace the document set for everyone; all signature fields keep their
               current positions. Only possible while nobody has signed yet.
             </template>
           </p>
@@ -1024,12 +1037,23 @@ const EVENT_ICONS: Record<string, string> = {
             {{ replaceDocError }}
           </v-alert>
           <v-file-input
-            v-model="replaceDocFile"
-            label="New document"
-            :accept="UPLOAD_ACCEPT"
+            v-model="replaceDocFiles"
+            label="New documents"
             prepend-icon="mdi-file-upload"
+            multiple
+            hint="Select files in signing order, then adjust the order below."
+            persistent-hint
             :disabled="replaceDocSubmitting"
           />
+          <v-list v-if="replaceDocFiles.length" density="compact">
+            <v-list-item v-for="(file, i) in replaceDocFiles" :key="`${file.name}-${i}`" :title="`${i + 1}. ${file.name}`">
+              <template #append>
+                <v-btn icon="mdi-arrow-up" size="x-small" variant="text" :disabled="i === 0" :aria-label="`Move ${file.name} up`" @click="moveReplacement(i, -1)" />
+                <v-btn icon="mdi-arrow-down" size="x-small" variant="text" :disabled="i === replaceDocFiles.length - 1" :aria-label="`Move ${file.name} down`" @click="moveReplacement(i, 1)" />
+                <v-btn icon="mdi-close" size="x-small" variant="text" :aria-label="`Remove ${file.name}`" @click="removeReplacement(i)" />
+              </template>
+            </v-list-item>
+          </v-list>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -1040,7 +1064,7 @@ const EVENT_ICONS: Record<string, string> = {
             color="primary"
             variant="flat"
             :loading="replaceDocSubmitting"
-            :disabled="!replaceDocFile"
+            :disabled="replaceDocFiles.length === 0"
             @click="confirmReplaceDoc"
           >
             Replace

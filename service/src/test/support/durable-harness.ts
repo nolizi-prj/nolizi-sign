@@ -85,7 +85,11 @@ export function newHarness(env: Partial<Env> = {}): Harness {
       const { cookie, headers, ...rest } = init;
       const h = new Headers(headers as HeadersInit | undefined);
       if (cookie) h.set('cookie', cookie);
-      if (rest.body && !h.has('content-type')) h.set('content-type', 'application/json');
+      // Let Request generate multipart/form-data's boundary. For JSON bodies,
+      // keep the convenience every existing route test relies on.
+      if (rest.body && !(rest.body instanceof FormData) && !h.has('content-type')) {
+        h.set('content-type', 'application/json');
+      }
       return service.fetch(new Request(`https://sign.example.test${path}`, { ...rest, headers: h }));
     },
   };

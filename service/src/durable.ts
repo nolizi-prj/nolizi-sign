@@ -16,7 +16,7 @@
  * /sign/token/*, /sign/:id, /files/*.
  */
 
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { stampAndCertifyPdf, PlacedField, SignerInfo } from './core/stamping.js';
 import { sendMail, mailConfigured, MailEnv } from './mail.js';
 import { R2SignStorage } from './storage/r2.js';
@@ -43,6 +43,12 @@ const RESEND_GUARD_SEC = 60;
 // With R2 the ceiling is generous; without it, PDFs live in DO SQLite rows (2MB hard limit).
 const MAX_PDF_BYTES_R2 = 20_000_000;
 const MAX_PDF_BYTES_SQLITE = 1_500_000;
+
+/** Public, non-enumerable identifier printed on executed documents. */
+const newEnvelopeUid = (): string => crypto.randomUUID().toUpperCase();
+const MAX_DOCUMENT_PAGES = 500;
+const CONSENT_VERSION = 'pumasi-esign-consent-v1';
+const CONSENT_TEXT = 'I agree to use electronic records and signatures for this envelope and intend my electronic signature to be legally binding like a handwritten signature.';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -95,6 +101,38 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array | null => {
   } catch {
     return null;
   }
+};
+
+const attachmentExtension = (contentType: string): string =>
+  contentType === 'application/pdf' ? 'pdf' : contentType === 'image/png' ? 'png' : 'jpg';
+
+/**
+ * Turn an untrusted multipart filename into a safe evidence/display name.
+ * The extension is derived from bytes already inspected by the caller, never
+ * from the browser-supplied MIME type. A conflicting extension is refused
+ * instead of silently making `invoice.pdf.exe` look harmless in one screen
+ * and executable in another downstream system.
+ */
+const safeAttachmentFilename = (rawName: string, contentType: string): { filename?: string; error?: string } => {
+  const expected = attachmentExtension(contentType);
+  const normalized = String(rawName || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '');
+  if (!normalized) return { filename: `attachment.${expected}` };
+  const dot = normalized.lastIndexOf('.');
+  if (dot >= 0) {
+    const supplied = normalized.slice(dot + 1).toLowerCase();
+    const allowed = contentType === 'image/jpeg' ? new Set(['jpg', 'jpeg']) : new Set([expected]);
+    if (!allowed.has(supplied)) {
+      return { error: `The attachment filename must end in .${expected}${contentType === 'image/jpeg' ? ' or .jpeg' : ''} to match its contents` };
+    }
+  }
+  const stem = (dot >= 0 ? normalized.slice(0, dot) : normalized).trim().replace(/[. ]+$/g, '') || 'attachment';
+  return { filename: `${stem.slice(0, 240)}.${expected}` };
 };
 
 /** Internal submitter status → the frontend's SubmitterStatus. */
@@ -174,6 +212,14 @@ export class PumasiSignService implements DurableObject {
         updated_at TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS archive_recipients (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(owner_id, email)
+      );
+
       CREATE TABLE IF NOT EXISTS auth_codes (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
@@ -194,6 +240,37 @@ export class PumasiSignService implements DurableObject {
         created_at TEXT,
         archived_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS template_shares (
+        id TEXT PRIMARY KEY,
+        template_id TEXT NOT NULL,
+        recipient_email TEXT NOT NULL,
+        shared_by TEXT NOT NULL,
+        permission TEXT NOT NULL DEFAULT 'use',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        accepted_at TEXT,
+        revoked_at TEXT,
+        UNIQUE(template_id, recipient_email)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_template_shares_recipient
+        ON template_shares(recipient_email, status);
+
+      CREATE TABLE IF NOT EXISTS team_members (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        status TEXT NOT NULL DEFAULT 'pending',
+        invited_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        accepted_at TEXT,
+        revoked_at TEXT,
+        UNIQUE(owner_id, email)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_team_members_email ON team_members(email, status);
 
       CREATE TABLE IF NOT EXISTS submissions (
         id TEXT PRIMARY KEY,
@@ -247,6 +324,49 @@ export class PumasiSignService implements DurableObject {
         created_at TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        submitter_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        data_blob BLOB,
+        data_key TEXT,
+        created_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS submission_documents (
+        id TEXT PRIMARY KEY,
+        submission_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        page_count INTEGER NOT NULL,
+        page_start INTEGER NOT NULL,
+        pdf_blob BLOB,
+        pdf_key TEXT,
+        created_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS rate_limit_events (
+        id TEXT PRIMARY KEY,
+        bucket_key TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_rate_limit_bucket_time ON rate_limit_events(bucket_key, occurred_at);
+
+      CREATE TABLE IF NOT EXISTS signer_consents (
+        id TEXT PRIMARY KEY,
+        submission_id TEXT NOT NULL,
+        submitter_id TEXT NOT NULL UNIQUE,
+        disclosure_version TEXT NOT NULL,
+        disclosure_text TEXT NOT NULL,
+        accepted_at TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        reviewed_document_hash TEXT NOT NULL,
+        document_manifest_json TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS audit_events (
         id TEXT PRIMARY KEY,
         submission_id TEXT NOT NULL,
@@ -279,6 +399,12 @@ export class PumasiSignService implements DurableObject {
       `ALTER TABLE submissions ADD COLUMN original_pdf_key TEXT`,
       `ALTER TABLE submissions ADD COLUMN completed_pdf_key TEXT`,
       `ALTER TABLE templates ADD COLUMN pdf_key TEXT`,
+      `ALTER TABLE submissions ADD COLUMN certificate_pdf_blob BLOB`,
+      `ALTER TABLE submissions ADD COLUMN certificate_pdf_key TEXT`,
+      `ALTER TABLE submissions ADD COLUMN original_hash TEXT`,
+      `ALTER TABLE submissions ADD COLUMN completed_hash TEXT`,
+      `ALTER TABLE submissions ADD COLUMN certificate_hash TEXT`,
+      `ALTER TABLE submission_documents ADD COLUMN sha256 TEXT`,
     ];
     for (const stmt of alters) {
       try { this.sql.exec(stmt); } catch { /* already applied */ }
@@ -383,15 +509,138 @@ export class PumasiSignService implements DurableObject {
     return null;
   }
 
+  private async sha256(bytes: Uint8Array): Promise<string> {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer));
+    return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
   private async graphConfig(): Promise<{ tenantId: string; clientId: string; clientSecret: string; driveId: string } | null> {
     const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET, MS_GRAPH_DRIVE_ID } = this.env;
     if (!MS_GRAPH_TENANT_ID || !MS_GRAPH_CLIENT_ID || !MS_GRAPH_CLIENT_SECRET || !MS_GRAPH_DRIVE_ID) return null;
     return { tenantId: MS_GRAPH_TENANT_ID, clientId: MS_GRAPH_CLIENT_ID, clientSecret: MS_GRAPH_CLIENT_SECRET, driveId: MS_GRAPH_DRIVE_ID };
   }
 
-  private async mailOrLog(to: string, subject: string, text: string, html?: string): Promise<boolean> {
+  /** Normalize one supported upload into the stable PDF used by templates. */
+  private async uploadAsPdf(file: File): Promise<{ bytes?: Uint8Array; pageCount?: number; error?: string }> {
+    if (file.size > this.maxPdfBytes()) {
+      return { error: `The source file exceeds the ${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit.` };
+    }
+    const input = new Uint8Array(await file.arrayBuffer());
+    const lower = file.name.toLowerCase();
+    const ext = lower.split('.').pop() || '';
+    let bytes: Uint8Array;
+    if (lower.endsWith('.pdf')) {
+      bytes = input;
+    } else if (/\.(png|jpe?g)$/.test(lower)) {
+      const doc = await PDFDocument.create();
+      const img = lower.endsWith('.png') ? await doc.embedPng(input) : await doc.embedJpg(input);
+      const page = doc.addPage([612, 792]);
+      const scale = Math.min(552 / img.width, 712 / img.height, 1);
+      page.drawImage(img, {
+        x: (612 - img.width * scale) / 2,
+        y: (792 - img.height * scale) / 2,
+        width: img.width * scale,
+        height: img.height * scale,
+      });
+      bytes = await doc.save();
+    } else if (ext === 'txt' || ext === 'csv') {
+      // Text is rendered locally so this useful baseline does not depend on
+      // Microsoft Graph. Standard PDF fonts are WinAnsi; unsupported Unicode
+      // code points are made explicit rather than crashing conversion.
+      let text = new TextDecoder('utf-8', { fatal: false }).decode(input)
+        .replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ');
+      text = text.replace(/[^\x20-\x7E\n]/g, '?');
+      const doc = await PDFDocument.create();
+      const font = await doc.embedFont(StandardFonts.Courier);
+      const fontSize = 9;
+      const lineHeight = 12;
+      const maxColumns = ext === 'csv' ? 105 : 95;
+      const lines: string[] = [];
+      for (const sourceLine of text.split('\n')) {
+        if (!sourceLine.length) { lines.push(''); continue; }
+        for (let offset = 0; offset < sourceLine.length; offset += maxColumns) {
+          lines.push(sourceLine.slice(offset, offset + maxColumns));
+        }
+      }
+      const linesPerPage = 58;
+      for (let offset = 0; offset < Math.max(lines.length, 1); offset += linesPerPage) {
+        const page = doc.addPage([612, 792]);
+        lines.slice(offset, offset + linesPerPage).forEach((line, index) => {
+          page.drawText(line, { x: 36, y: 756 - index * lineHeight, size: fontSize, font, color: rgb(0, 0, 0) });
+        });
+      }
+      bytes = await doc.save();
+    } else if (SUPPORTED_OFFICE_FORMATS.has(ext)) {
+      const cfg = await this.graphConfig();
+      if (!cfg) return { error: 'Office conversion is not configured. Convert the file to PDF first.' };
+      const converted = await convertOfficeToPdfViaGraph(input, ext, cfg);
+      if (!converted) return { error: 'The Office document could not be converted. Convert it to PDF first.' };
+      bytes = converted;
+    } else {
+      return { error: 'This document format is not supported.' };
+    }
+    if (bytes.length > this.maxPdfBytes()) return { error: `The document exceeds the ${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit.` };
+    const parsed = await PDFDocument.load(bytes).catch(() => null);
+    if (!parsed || parsed.getPageCount() === 0) return { error: 'The uploaded document is not a readable PDF.' };
+    if (parsed.getPageCount() > MAX_DOCUMENT_PAGES) return { error: `The document exceeds the ${MAX_DOCUMENT_PAGES}-page limit.` };
+    return { bytes, pageCount: parsed.getPageCount() };
+  }
+
+  /** Normalize files independently, then build the ordered rendition fields reference. */
+  private async prepareDocuments(files: File[]): Promise<{
+    documents?: { id: string; filename: string; position: number; pageCount: number; pageStart: number; bytes: Uint8Array }[];
+    merged?: Uint8Array;
+    error?: string;
+  }> {
+    const sourceBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (sourceBytes > this.maxPdfBytes()) return { error: `The source files exceed the ${Math.round(this.maxPdfBytes() / 1_000_000)}MB combined limit.` };
+    const documents: { id: string; filename: string; position: number; pageCount: number; pageStart: number; bytes: Uint8Array }[] = [];
+    const merged = await PDFDocument.create();
+    let pageStart = 0;
+    for (const [position, file] of files.entries()) {
+      const normalized = await this.uploadAsPdf(file);
+      if (!normalized.bytes || !normalized.pageCount) return { error: `"${file.name}": ${normalized.error || 'could not be prepared.'}` };
+      const source = await PDFDocument.load(normalized.bytes);
+      const pages = await merged.copyPages(source, source.getPageIndices());
+      for (const page of pages) merged.addPage(page);
+      documents.push({
+        id: `doc-${crypto.randomUUID().slice(0, 10)}`,
+        filename: file.name.slice(0, 255),
+        position,
+        pageCount: normalized.pageCount,
+        pageStart,
+        bytes: normalized.bytes,
+      });
+      pageStart += normalized.pageCount;
+      if (pageStart > MAX_DOCUMENT_PAGES) return { error: `The combined documents exceed the ${MAX_DOCUMENT_PAGES}-page limit.` };
+    }
+    const bytes = await merged.save();
+    if (bytes.length > this.maxPdfBytes()) return { error: `The combined documents exceed the ${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit.` };
+    return { documents, merged: bytes };
+  }
+
+  private async persistSubmissionDocuments(submissionId: string, documents: NonNullable<Awaited<ReturnType<PumasiSignService['prepareDocuments']>>['documents']>, now: string) {
+    for (const document of documents) {
+      const key = await this.storePdf(`submission-documents/${submissionId}`, document.id, document.bytes);
+      this.sql.exec(
+        `INSERT INTO submission_documents (id, submission_id, filename, position, page_count, page_start, pdf_blob, pdf_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        document.id, submissionId, document.filename, document.position, document.pageCount, document.pageStart,
+        key ? null : document.bytes, key, now,
+      );
+      this.sql.exec(`UPDATE submission_documents SET sha256 = ? WHERE id = ?`, await this.sha256(document.bytes), document.id);
+    }
+  }
+
+  private async mailOrLog(
+    to: string,
+    subject: string,
+    text: string,
+    html?: string,
+    attachments?: Array<{ filename: string; contentType: string; bytes: Uint8Array }>,
+  ): Promise<boolean> {
     try {
-      await sendMail(this.env, { to, subject, text, html });
+      await sendMail(this.env, { to, subject, text, html, attachments });
       return true;
     } catch (err) {
       console.warn(`[mail] send to ${to} failed: ${(err as Error).message}`);
@@ -418,6 +667,19 @@ export class PumasiSignService implements DurableObject {
   </div>
   <p style="text-align:center;color:#98a2b3;font-size:12px;margin:16px 0 0">Sent by Pumasi Sign · sign.pumasi.ai<br>If you weren't expecting this email, you can safely ignore it.</p>
 </div></body></html>`;
+  }
+
+  private async sendTeamInvitation(email: string, inviter: UserRow, workspaceName: string): Promise<void> {
+    const url = `${this.env.BASE_URL || 'https://sign.pumasi.ai'}/login?next=${encodeURIComponent('/dashboard')}`;
+    await this.mailOrLog(
+      email,
+      `${inviter.name} invited you to Pumasi Sign`,
+      `${inviter.name} (${inviter.email}) invited you to join ${workspaceName} in Pumasi Sign. Team membership does not give access to anyone else's envelopes or templates.\n\nAccept invitation: ${url}`,
+      this.mailHtml(`${inviter.name} invited you to join their team`, [
+        `Join ${workspaceName} to create and send your own agreements. Membership does not expose anyone else's envelopes or templates.`,
+        `Sign in with ${email} to accept this invitation.`,
+      ], { cta: { label: 'Accept invitation', url } }),
+    );
   }
 
   /** Issue a 6-digit code for `key`, or explain why not yet. */
@@ -447,6 +709,37 @@ export class PumasiSignService implements DurableObject {
     if (!row) return false;
     this.sql.exec(`DELETE FROM auth_codes WHERE email = ?`, key);
     return true;
+  }
+
+  /** Persistent sliding-window limiter shared by every request hitting this DO. */
+  private async rateLimited(scope: string, identifiers: string[], limit: number, windowSeconds: number): Promise<number | null> {
+    const now = Date.now();
+    const cutoff = now - windowSeconds * 1000;
+    this.sql.exec(`DELETE FROM rate_limit_events WHERE occurred_at < ?`, now - 86_400_000);
+    const buckets: string[] = [];
+    for (const identifier of identifiers.filter(Boolean)) {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${scope}:${identifier}`)));
+      buckets.push(`${scope}:${Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')}`);
+    }
+    let retryAfter = 0;
+    for (const bucket of buckets) {
+      const rows = this.all<{ occurred_at: number }>(
+        `SELECT occurred_at FROM rate_limit_events WHERE bucket_key = ? AND occurred_at >= ? ORDER BY occurred_at ASC`, bucket, cutoff,
+      );
+      if (rows.length >= limit) retryAfter = Math.max(retryAfter, Math.ceil((rows[0].occurred_at + windowSeconds * 1000 - now) / 1000));
+    }
+    if (retryAfter > 0) return retryAfter;
+    for (const bucket of buckets) {
+      this.sql.exec(
+        `INSERT INTO rate_limit_events (id, bucket_key, occurred_at) VALUES (?, ?, ?)`,
+        `rate-${crypto.randomUUID().slice(0, 10)}`, bucket, now,
+      );
+    }
+    return null;
+  }
+
+  private clientIp(req: Request): string {
+    return req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
   }
 
   /** Field rows → the frontend's FieldDef shape. Role comes from the stored field_role or the owning submitter. */
@@ -548,11 +841,12 @@ export class PumasiSignService implements DurableObject {
 
   // ── outbound shapes ────────────────────────────────────────────────────
 
-  private templateOut(owner: UserRow, t: any): any {
+  private templateOut(viewer: UserRow, t: any): any {
     const fields = t.fields_json ? JSON.parse(t.fields_json) : [];
     const roles = t.roles_json
       ? JSON.parse(t.roles_json)
       : [...new Set(fields.map((f: any) => f.role).filter((r: string) => r))];
+    const creator = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, t.created_by) ?? viewer;
     return {
       id: t.id,
       name: t.name,
@@ -560,8 +854,37 @@ export class PumasiSignService implements DurableObject {
       fields,
       roles,
       created_at: t.created_at,
-      shared: Boolean(t.is_shared),
-      owner: { id: owner.id, name: owner.name, email: owner.email, is_external: false },
+      shared: t.created_by === viewer.email
+        ? Boolean(this.one(`SELECT 1 FROM template_shares WHERE template_id = ? AND status != 'revoked' LIMIT 1`, t.id))
+        : true,
+      access: t.created_by === viewer.email ? 'owner' : 'use',
+      owner: { id: creator.id, name: creator.name, email: creator.email, is_external: false },
+      archived_at: t.archived_at || null,
+    };
+  }
+
+  private canUseTemplate(t: any, user: UserRow): boolean {
+    if (t.created_by === user.email) return true;
+    return Boolean(this.one(
+      `SELECT 1 FROM template_shares WHERE template_id = ? AND recipient_email = ? AND status != 'revoked'`,
+      t.id, user.email.toLowerCase(),
+    ));
+  }
+
+  private workspaceFor(user: UserRow): { ownerId: string; role: 'owner' | 'admin' | 'member' } {
+    const membership = this.one<{ owner_id: string; role: 'admin' | 'member' }>(
+      `SELECT owner_id, role FROM team_members WHERE email = ? AND status = 'accepted' ORDER BY accepted_at DESC LIMIT 1`,
+      user.email.toLowerCase(),
+    );
+    return membership ? { ownerId: membership.owner_id, role: membership.role } : { ownerId: user.id, role: 'owner' };
+  }
+
+  private accountUserOut(user: UserRow): any {
+    const workspace = this.workspaceFor(user);
+    return {
+      id: user.id, email: user.email, name: user.name,
+      is_admin: workspace.role === 'owner' || workspace.role === 'admin',
+      is_external: false, can_send: true, role: workspace.role, provider: user.provider,
     };
   }
 
@@ -611,7 +934,7 @@ export class PumasiSignService implements DurableObject {
       })),
       my_submitter_id: mine?.id ?? null,
       archived_by_me: Boolean(sub.archived_at),
-      has_certificate: Boolean(sub.completed_pdf_key || sub.completed_pdf_blob),
+      has_certificate: Boolean(sub.certificate_pdf_key || sub.certificate_pdf_blob),
     };
   }
 
@@ -740,6 +1063,18 @@ export class PumasiSignService implements DurableObject {
       );
       user = { id: userId, email, name, provider };
     }
+    // A share is bound to the verified login email. Merely possessing or
+    // forwarding the notification link never grants a different account access.
+    this.sql.exec(
+      `UPDATE template_shares SET status = 'accepted', accepted_at = COALESCE(accepted_at, ?)
+        WHERE recipient_email = ? AND status = 'pending'`,
+      now, email.toLowerCase(),
+    );
+    this.sql.exec(
+      `UPDATE team_members SET status = 'accepted', accepted_at = COALESCE(accepted_at, ?)
+        WHERE id = (SELECT id FROM team_members WHERE email = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1)`,
+      now, email.toLowerCase(),
+    );
     const token = newToken();
     this.sql.exec(
       `INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`,
@@ -748,11 +1083,12 @@ export class PumasiSignService implements DurableObject {
     return { user, cookie: setCookie('sign_session', token, SESSION_TTL_DAYS * 86400) };
   }
 
-  private oauthProvider(name: string): { authUrl: string; tokenUrl: string; clientId?: string; clientSecret?: string } | null {
+  private oauthProvider(name: string): { authUrl: string; tokenUrl: string; userInfoUrl: string; clientId?: string; clientSecret?: string } | null {
     if (name === 'google') {
       return {
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
         tokenUrl: 'https://oauth2.googleapis.com/token',
+        userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
         clientId: this.env.GOOGLE_OAUTH_CLIENT_ID,
         clientSecret: this.env.GOOGLE_OAUTH_CLIENT_SECRET,
       };
@@ -761,6 +1097,7 @@ export class PumasiSignService implements DurableObject {
       return {
         authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
         tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        userInfoUrl: 'https://graph.microsoft.com/oidc/userinfo',
         clientId: this.env.MS_OAUTH_CLIENT_ID,
         clientSecret: this.env.MS_OAUTH_CLIENT_SECRET,
       };
@@ -769,6 +1106,13 @@ export class PumasiSignService implements DurableObject {
   }
 
   private async route(req: Request, url: URL, path: string, method: string): Promise<Response> {
+    // Storage-backed readiness. The edge Worker is the only caller because it
+    // rejects every /__internal/* URL before forwarding public requests.
+    if (path === '/__internal/ready' && method === 'GET') {
+      const row = this.one<{ ok: number }>('SELECT 1 AS ok');
+      return json({ ready: row?.ok === 1 });
+    }
+
     // ── the hourly expiry sweep ───────────────────────────────────────────
     //
     // Reached only from worker.ts's `scheduled()` export, through
@@ -777,6 +1121,39 @@ export class PumasiSignService implements DurableObject {
     // path of which is forwarded here. spec/0007 §S2c.
     if (path === '/__internal/expire' && method === 'POST') {
       return json({ expired: this.sweepExpired() });
+    }
+
+    if (path === '/__internal/rate-limit' && method === 'POST') {
+      const body: any = await req.json().catch(() => ({}));
+      const owner = this.sessionUser(req);
+      const policies: Record<string, { limit: number; window: number }> = {
+        // Pilot users often submit several observations in one review session.
+        // Keep the conservative anonymous/IP ceiling, but do not lock an
+        // authenticated reviewer out after five useful reports.
+        feedback: { limit: owner ? 30 : 5, window: 3600 },
+        'standalone-convert': { limit: 20, window: 600 },
+      };
+      const policy = policies[String(body.scope || '')];
+      if (!policy) return json({ error: 'Unknown rate-limit policy' }, 400);
+      const identity = owner ? `owner:${owner.id}` : `ip:${this.clientIp(req)}`;
+      const retryAfter = await this.rateLimited(String(body.scope), [identity], policy.limit, policy.window);
+      return json({ allowed: retryAfter == null, retry_after: retryAfter });
+    }
+
+    // Conversion and document writes are CPU/storage-heavy. Authenticated
+    // principals get independent buckets; anonymous calls fall back to IP.
+    if (method === 'POST' && (
+      path === '/api/submissions/adhoc/merged-document' ||
+      path === '/api/submissions/adhoc' ||
+      path === '/api/templates' ||
+      /\/replace-document$/.test(path) ||
+      /^\/api\/sign\/[A-Za-z0-9_-]+\/(signature|attachment)$/.test(path)
+    )) {
+      const owner = this.sessionUser(req);
+      const signer = this.signerSubmitterId(req);
+      const identity = owner ? `owner:${owner.id}` : signer ? `signer:${signer}` : `ip:${this.clientIp(req)}`;
+      const retry = await this.rateLimited('document-write', [identity], 30, 600);
+      if (retry != null) return json({ error: 'Too many document requests. Try again shortly.' }, 429, { 'Retry-After': String(retry) });
     }
 
     // ── OAuth sign-in (Google / Microsoft) ────────────────────────────────
@@ -836,16 +1213,24 @@ export class PumasiSignService implements DurableObject {
         console.warn(`[oauth] ${oauthMatch[1]} exchange failed: ${tokenRes.status} ${(await tokenRes.text()).slice(0, 200)}`);
         return new Response(null, { status: 302, headers: { Location: '/login' } });
       }
-      const tok = (await tokenRes.json()) as { id_token?: string };
-      // The id_token came directly from the provider's token endpoint over TLS —
-      // its payload is trustworthy without local signature verification.
-      const seg = tok.id_token?.split('.')[1];
-      let claims: any = {};
-      try {
-        claims = JSON.parse(atob((seg || '').replace(/-/g, '+').replace(/_/g, '/')));
-      } catch { /* fall through to the check below */ }
+      const tok = (await tokenRes.json()) as { access_token?: string };
+      // Never trust a merely decoded JWT payload. Ask the provider for the
+      // identity bound to the access token returned by this code exchange;
+      // TLS plus the bearer-token check provides the verification boundary.
+      if (!tok.access_token) return new Response(null, { status: 302, headers: { Location: '/login' } });
+      const userInfoRes = await fetch(provider.userInfoUrl, {
+        headers: { Authorization: `Bearer ${tok.access_token}` },
+      });
+      if (!userInfoRes.ok) return new Response(null, { status: 302, headers: { Location: '/login' } });
+      const claims: any = await userInfoRes.json().catch(() => ({}));
       const email = String(claims.email || claims.preferred_username || '').trim().toLowerCase();
-      if (!email || !email.includes('@') || claims.email_verified === false) {
+      // Google's UserInfo contract supplies email_verified and it must be
+      // affirmative. Microsoft Entra's UserInfo endpoint generally omits that
+      // Google-specific claim; the identity is authenticated by the bearer
+      // token/code exchange itself. Requiring the absent claim made every real
+      // Microsoft login silently return to /login.
+      const unverifiedGoogleEmail = oauthMatch[1] === 'google' && claims.email_verified !== true;
+      if (!email || !email.includes('@') || unverifiedGoogleEmail) {
         return new Response(null, { status: 302, headers: { Location: '/login' } });
       }
       const name = String(claims.name || email.split('@')[0]).slice(0, 120);
@@ -860,6 +1245,8 @@ export class PumasiSignService implements DurableObject {
       if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         return json({ error: 'Please enter a valid email address' }, 400);
       }
+      const retry = await this.rateLimited('login-code-request', [`ip:${this.clientIp(req)}`, `email:${email}`], 10, 3600);
+      if (retry != null) return json({ error: 'Too many verification-code requests. Try again later.' }, 429, { 'Retry-After': String(retry) });
       if (!mailConfigured(this.env)) {
         return json({ error: 'Email delivery is not configured on this deployment.' }, 503);
       }
@@ -881,17 +1268,19 @@ export class PumasiSignService implements DurableObject {
       const body: any = await req.json();
       const email = String(body.email || '').trim().toLowerCase();
       const code = String(body.code || '').trim();
+      const retry = await this.rateLimited('login-code-verify', [`ip:${this.clientIp(req)}`, `email:${email}`], 6, 900);
+      if (retry != null) return json({ error: 'Too many verification attempts. Try again later.' }, 429, { 'Retry-After': String(retry) });
       if (!this.consumeCode(email, code)) {
         return json({ error: 'Invalid or expired verification code' }, 401);
       }
 
       const displayName = String(body.name || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()));
       const { user, cookie } = this.establishSession(email, displayName, 'email');
-      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, user.id);
+      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, this.workspaceFor(user).ownerId);
       return json(
         {
           ok: true,
-          user: { id: user.id, email: user.email, name: user.name, is_admin: true, is_external: false, can_send: true },
+          user: this.accountUserOut(user),
           branding: branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB' },
         },
         200,
@@ -902,7 +1291,23 @@ export class PumasiSignService implements DurableObject {
     if (path === '/api/auth/me' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      return json({ id: user.id, email: user.email, name: user.name, is_admin: true, is_external: false, can_send: true });
+      return json(this.accountUserOut(user));
+    }
+
+    if (path === '/api/profile' && method === 'GET') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      return json(this.accountUserOut(user));
+    }
+
+    if (path === '/api/profile' && method === 'PUT') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const body: any = await req.json();
+      const name = String(body.name || '').trim().replace(/\s+/g, ' ');
+      if (name.length < 2 || name.length > 120) return json({ error: 'Name must be between 2 and 120 characters' }, 400);
+      this.sql.exec(`UPDATE users SET name = ? WHERE id = ?`, name, user.id);
+      return json(this.accountUserOut({ ...user, name }));
     }
 
     if (path === '/api/auth/logout' && method === 'POST') {
@@ -915,16 +1320,18 @@ export class PumasiSignService implements DurableObject {
     if (path === '/api/branding' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, user.id);
+      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, this.workspaceFor(user).ownerId);
       return json(branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB', welcome_message: null, logo_data_url: null });
     }
 
     if (path === '/api/branding' && method === 'PUT') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
+      const workspace = this.workspaceFor(user);
+      if (workspace.role === 'member') return json({ error: 'Only workspace admins can change branding' }, 403);
       const body: any = await req.json();
       const now = new Date().toISOString();
-      const existing = this.one<{ id: string }>(`SELECT id FROM org_branding WHERE owner_id = ?`, user.id);
+      const existing = this.one<{ id: string }>(`SELECT id FROM org_branding WHERE owner_id = ?`, workspace.ownerId);
       if (existing) {
         this.sql.exec(
           `UPDATE org_branding SET company_name = ?, logo_data_url = ?, primary_color = ?, welcome_message = ?, updated_at = ? WHERE owner_id = ?`,
@@ -932,13 +1339,13 @@ export class PumasiSignService implements DurableObject {
           body.logo_data_url ?? null,
           String(body.primary_color || '#1A56DB').slice(0, 20),
           body.welcome_message != null ? String(body.welcome_message).slice(0, 500) : null,
-          now, user.id,
+          now, workspace.ownerId,
         );
       } else {
         this.sql.exec(
           `INSERT INTO org_branding (id, owner_id, company_name, logo_data_url, primary_color, welcome_message, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          `org-${crypto.randomUUID().slice(0, 8)}`, user.id,
+          `org-${crypto.randomUUID().slice(0, 8)}`, workspace.ownerId,
           String(body.company_name || 'Pumasi Sign').slice(0, 120),
           body.logo_data_url ?? null,
           String(body.primary_color || '#1A56DB').slice(0, 20),
@@ -946,8 +1353,137 @@ export class PumasiSignService implements DurableObject {
           now, now,
         );
       }
-      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, user.id);
+      const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, workspace.ownerId);
       return json(branding);
+    }
+
+    // ── owner: automatic completed-envelope archive recipients ───────────
+    if (path === '/api/admin/archive-recipients' && method === 'GET') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      return json(this.all<{ email: string }>(
+        `SELECT email FROM archive_recipients WHERE owner_id = ? ORDER BY email`, user.id,
+      ).map((row) => row.email));
+    }
+
+    if (path === '/api/admin/archive-recipients' && method === 'PUT') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const body: any = await req.json();
+      if (!Array.isArray(body.emails)) return json({ error: 'emails must be an array' }, 400);
+      const emails: string[] = [...new Set<string>(
+        body.emails.map((value: unknown) => String(value).trim().toLowerCase()).filter(Boolean),
+      )];
+      if (emails.length > 10) return json({ error: 'Up to 10 archive recipients are allowed' }, 400);
+      if (emails.some((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) {
+        return json({ error: 'Every archive recipient must be a valid email address' }, 400);
+      }
+      if (emails.includes(user.email.toLowerCase())) {
+        return json({ error: 'The envelope owner already receives completed-envelope notifications' }, 400);
+      }
+      this.sql.exec(`DELETE FROM archive_recipients WHERE owner_id = ?`, user.id);
+      const now = new Date().toISOString();
+      for (const email of emails) {
+        this.sql.exec(
+          `INSERT INTO archive_recipients (id, owner_id, email, created_at) VALUES (?, ?, ?, ?)`,
+          `arc-${crypto.randomUUID().slice(0, 8)}`, user.id, email, now,
+        );
+      }
+      return json(emails);
+    }
+
+    // Team membership grants account capabilities only. Resource visibility
+    // remains owner/participant/explicit-share scoped in the routes below.
+    if (path === '/api/team/members' && method === 'GET') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const workspace = this.workspaceFor(user);
+      if (workspace.role === 'member') return json({ error: 'Only workspace admins can manage the team' }, 403);
+      const owner = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE id = ?`, workspace.ownerId);
+      const members = this.all<any>(
+        `SELECT tm.id, tm.email, tm.role, tm.status, tm.created_at, tm.accepted_at,
+                COALESCE(u.name, tm.email) AS name
+           FROM team_members tm LEFT JOIN users u ON u.email = tm.email
+          WHERE tm.owner_id = ? AND tm.status != 'revoked' ORDER BY tm.created_at`, workspace.ownerId,
+      );
+      return json([
+        { id: `owner-${workspace.ownerId}`, email: owner?.email || user.email, name: owner?.name || user.name, role: 'owner', status: 'accepted', created_at: null },
+        ...members,
+      ]);
+    }
+
+    if (path === '/api/team/members' && method === 'POST') {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const workspace = this.workspaceFor(user);
+      if (workspace.role === 'member') return json({ error: 'Only workspace admins can invite people' }, 403);
+      const body: any = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const role = body.role === 'admin' ? 'admin' : 'member';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'A valid email is required' }, 400);
+      const owner = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE id = ?`, workspace.ownerId);
+      if (email === owner?.email.toLowerCase()) return json({ error: 'The workspace owner is already on the team' }, 400);
+      const elsewhere = this.one<{ owner_id: string }>(
+        `SELECT owner_id FROM team_members WHERE email = ? AND status = 'accepted' AND owner_id != ? LIMIT 1`, email, workspace.ownerId,
+      );
+      if (elsewhere) return json({ error: 'This person already belongs to another workspace' }, 409);
+      const now = new Date().toISOString();
+      const id = `tmb-${crypto.randomUUID().slice(0, 12)}`;
+      this.sql.exec(
+        `INSERT INTO team_members (id, owner_id, email, role, status, invited_by, created_at, revoked_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, NULL)
+         ON CONFLICT(owner_id, email) DO UPDATE SET role = excluded.role,
+           status = CASE WHEN team_members.status = 'accepted' THEN 'accepted' ELSE 'pending' END,
+           invited_by = excluded.invited_by, created_at = excluded.created_at,
+           accepted_at = CASE WHEN team_members.status = 'accepted' THEN team_members.accepted_at ELSE NULL END,
+           revoked_at = NULL`,
+        id, workspace.ownerId, email, role, user.email, now,
+      );
+      await this.sendTeamInvitation(email, user, owner?.name || 'your team');
+      const row = this.one<any>(
+        `SELECT tm.id, tm.email, tm.role, tm.status, tm.created_at, tm.accepted_at, COALESCE(u.name, tm.email) AS name
+           FROM team_members tm LEFT JOIN users u ON u.email = tm.email WHERE tm.owner_id = ? AND tm.email = ?`,
+        workspace.ownerId, email,
+      );
+      return json(row, 201);
+    }
+
+    const teamMemberMatch = path.match(/^\/api\/team\/members\/([A-Za-z0-9_-]+)(?:\/(resend))?$/);
+    if (teamMemberMatch) {
+      const user = this.sessionUser(req);
+      if (!user) return json({ error: 'Not signed in' }, 401);
+      const workspace = this.workspaceFor(user);
+      if (workspace.role === 'member') return json({ error: 'Only workspace admins can manage the team' }, 403);
+      const member = this.one<any>(
+        `SELECT * FROM team_members WHERE id = ? AND owner_id = ? AND status != 'revoked'`, teamMemberMatch[1], workspace.ownerId,
+      );
+      if (!member) return json({ error: 'Team member not found' }, 404);
+      if (teamMemberMatch[2] === 'resend' && method === 'POST') {
+        if (member.status !== 'pending') return json({ error: 'Only pending invitations can be resent' }, 409);
+        const owner = this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE id = ?`, workspace.ownerId);
+        await this.sendTeamInvitation(member.email, user, owner?.name || 'your team');
+        return json({ ok: true });
+      }
+      if (!teamMemberMatch[2] && method === 'PUT') {
+        const body: any = await req.json();
+        if (body.role !== 'admin' && body.role !== 'member') {
+          return json({ error: 'Role must be admin or user' }, 400);
+        }
+        if (member.email.toLowerCase() === user.email.toLowerCase() && body.role !== member.role) {
+          return json({ error: 'Ask the workspace owner or another admin to change your role' }, 409);
+        }
+        this.sql.exec(`UPDATE team_members SET role = ? WHERE id = ?`, body.role, member.id);
+        return json({
+          id: member.id, email: member.email, role: body.role, status: member.status,
+          name: this.one<UserRow>(`SELECT id, email, name, provider FROM users WHERE email = ?`, member.email)?.name || member.email,
+          created_at: member.created_at, accepted_at: member.accepted_at,
+        });
+      }
+      if (!teamMemberMatch[2] && method === 'DELETE') {
+        this.sql.exec(`UPDATE team_members SET status = 'revoked', revoked_at = ? WHERE id = ?`, new Date().toISOString(), member.id);
+        return json({ ok: true });
+      }
+      return json({ error: 'Endpoint not found' }, 404);
     }
 
     // ── owner: recipient directory (the wizard's "users") ─────────────────
@@ -983,9 +1519,14 @@ export class PumasiSignService implements DurableObject {
     if (path === '/api/templates' && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
+      const archived = url.searchParams.get('archived') === 'true';
       const rows = this.all<any>(
-        `SELECT id, name, page_count, fields_json, roles_json, is_shared, is_adhoc, created_at FROM templates
-          WHERE created_by = ? AND archived_at IS NULL AND is_adhoc = 0 ORDER BY created_at DESC`, user.email,
+        `SELECT * FROM templates
+          WHERE (created_by = ? OR id IN (
+            SELECT template_id FROM template_shares WHERE recipient_email = ? AND status != 'revoked'
+          )) AND archived_at IS ${archived ? 'NOT NULL' : 'NULL'} AND is_adhoc = 0
+          ${archived ? 'AND created_by = ?' : ''} ORDER BY created_at DESC`,
+        ...(archived ? [user.email, user.email.toLowerCase(), user.email] : [user.email, user.email.toLowerCase()]),
       );
       return json(rows.map((t) => this.templateOut(user, t)));
     }
@@ -993,38 +1534,155 @@ export class PumasiSignService implements DurableObject {
     if (path === '/api/templates' && method === 'POST') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      const body: any = await req.json();
+      const contentType = req.headers.get('content-type') || '';
+      let name: string;
+      let pdfBytes: Uint8Array | null;
+      let pageCount: number;
+      let fields: any[] = [];
+      let roles: string[] = [];
+      if (contentType.includes('multipart/form-data')) {
+        const form = await req.formData();
+        const file = form.get('file');
+        name = String(form.get('name') || '').trim();
+        if (!name || !(file instanceof File)) return json({ error: 'Name and document are required' }, 400);
+        const normalized = await this.uploadAsPdf(file);
+        if (!normalized.bytes) return json({ error: normalized.error || 'The document could not be processed' }, 422);
+        pdfBytes = normalized.bytes;
+        pageCount = normalized.pageCount!;
+      } else {
+        const body: any = await req.json();
+        name = String(body.name || '').trim() || 'Untitled Template';
+        pdfBytes = body.pdfBase64 ? dataUrlToBytes(`,${body.pdfBase64}`) : null;
+        pageCount = Number(body.pageCount ?? body.page_count) || 1;
+        fields = Array.isArray(body.fields) ? body.fields : [];
+        roles = Array.isArray(body.roles) ? body.roles : [];
+      }
       const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
-      const pdfBytes = body.pdfBase64 ? dataUrlToBytes(`,${body.pdfBase64}`) : null;
       const pdfKey = pdfBytes ? await this.storePdf('templates', id, pdfBytes) : null;
       this.sql.exec(
         `INSERT INTO templates (id, name, created_by, pdf_blob, pdf_key, page_count, fields_json, roles_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, String(body.name || 'Untitled Template'), user.email, pdfKey ? null : pdfBytes, pdfKey,
-        Number(body.pageCount ?? body.page_count) || 1, JSON.stringify(body.fields || []),
-        JSON.stringify(body.roles || []), new Date().toISOString(),
+        id, name.slice(0, 255), user.email, pdfKey ? null : pdfBytes, pdfKey,
+        pageCount, JSON.stringify(fields), JSON.stringify(roles), new Date().toISOString(),
       );
-      const t = this.one<any>(`SELECT id, name, page_count, fields_json, roles_json, is_shared, created_at FROM templates WHERE id = ?`, id);
+      const t = this.one<any>(`SELECT * FROM templates WHERE id = ?`, id);
       return json(this.templateOut(user, t), 201);
     }
 
-    const tplMatch = path.match(/^\/api\/templates\/([A-Za-z0-9_-]+)$/);
-    if (tplMatch && method === 'GET') {
+    const tplMatch = path.match(/^\/api\/templates\/([A-Za-z0-9_-]+)(?:\/(fields|sharing|copy|archive|unarchive))?$/);
+    if (tplMatch) {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
-      const t = this.one<any>(
-        `SELECT id, name, page_count, fields_json, roles_json, is_shared, created_at FROM templates WHERE id = ? AND created_by = ?`,
-        tplMatch[1], user.email,
-      );
+      const t = this.one<any>(`SELECT * FROM templates WHERE id = ?`, tplMatch[1]);
       if (!t) return json({ error: 'Template not found' }, 404);
-      return json(this.templateOut(user, t));
+      const visible = this.canUseTemplate(t, user);
+      const owned = t.created_by === user.email;
+      const action = tplMatch[2];
+      if (!visible) return json({ error: 'Template not found' }, 404);
+      if (!action && method === 'GET') {
+        if (t.archived_at) return json({ error: 'Template not found' }, 404);
+        return json(this.templateOut(user, t));
+      }
+      if (action === 'fields' && method === 'PUT') {
+        if (!owned) return json({ error: 'Forbidden' }, 403);
+        const body: any = await req.json();
+        if (!Array.isArray(body.fields)) return json({ error: 'fields must be an array' }, 400);
+        if (body.fields.some((f: any) => !Number.isInteger(f.page) || f.page < 0 || f.page >= (t.page_count || 1))) {
+          return json({ error: 'page out of range' }, 422);
+        }
+        const roles = Array.isArray(body.roles)
+          ? body.roles.map(String)
+          : [...new Set(body.fields.filter((f: any) => f.type !== 'label').map((f: any) => String(f.role || '')).filter(Boolean))];
+        this.sql.exec(`UPDATE templates SET fields_json = ?, roles_json = ? WHERE id = ?`, JSON.stringify(body.fields), JSON.stringify(roles), t.id);
+        return json(this.templateOut(user, this.one<any>(`SELECT * FROM templates WHERE id = ?`, t.id)));
+      }
+      if (action === 'sharing' && method === 'PUT') {
+        if (!owned) return json({ error: 'Forbidden' }, 403);
+        const body: any = await req.json();
+        if (!Array.isArray(body.emails)) return json({ error: 'emails must be an array' }, 400);
+        const emails = [...new Set<string>(body.emails.map((v: unknown) => String(v).trim().toLowerCase()).filter(Boolean))];
+        if (emails.length > 50) return json({ error: 'A template can be shared with up to 50 people' }, 400);
+        if (emails.some((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) {
+          return json({ error: 'Every recipient must be a valid email address' }, 400);
+        }
+        if (emails.includes(user.email.toLowerCase())) return json({ error: 'You already own this template' }, 400);
+
+        const existing = new Set(this.all<{ recipient_email: string }>(
+          `SELECT recipient_email FROM template_shares WHERE template_id = ? AND status != 'revoked'`, t.id,
+        ).map((row) => row.recipient_email));
+        const now = new Date().toISOString();
+        for (const email of emails) {
+          this.sql.exec(
+            `INSERT INTO template_shares (id, template_id, recipient_email, shared_by, permission, status, created_at, revoked_at)
+             VALUES (?, ?, ?, ?, 'use', 'pending', ?, NULL)
+             ON CONFLICT(template_id, recipient_email) DO UPDATE SET status = 'pending', revoked_at = NULL, shared_by = excluded.shared_by`,
+            `tsh-${crypto.randomUUID().slice(0, 12)}`, t.id, email, user.email, now,
+          );
+          if (!existing.has(email)) {
+            const url = `${this.env.BASE_URL || 'https://sign.pumasi.ai'}/templates`;
+            await this.mailOrLog(
+              email,
+              `${user.name} shared a template with you`,
+              `${user.name} (${user.email}) shared “${t.name}” with you. You can use it to create an envelope, but cannot edit or delete the original.\n\nOpen templates: ${url}`,
+              this.mailHtml(`${user.name} shared a template with you`, [
+                `You can use “${t.name}” to create an envelope. You cannot edit or delete the original template.`,
+                `Sign in with ${email} to access it.`,
+              ], { cta: { label: 'Open shared template', url } }),
+            );
+          }
+        }
+        for (const email of existing) {
+          if (!emails.includes(email)) {
+            this.sql.exec(
+              `UPDATE template_shares SET status = 'revoked', revoked_at = ? WHERE template_id = ? AND recipient_email = ?`,
+              now, t.id, email,
+            );
+          }
+        }
+        return json({
+          template: this.templateOut(user, this.one<any>(`SELECT * FROM templates WHERE id = ?`, t.id)),
+          shares: this.all(`SELECT recipient_email AS email, permission, status, created_at FROM template_shares WHERE template_id = ? AND status != 'revoked' ORDER BY created_at`, t.id),
+        });
+      }
+      if (action === 'sharing' && method === 'GET') {
+        if (!owned) return json({ error: 'Forbidden' }, 403);
+        return json(this.all(
+          `SELECT recipient_email AS email, permission, status, created_at FROM template_shares WHERE template_id = ? AND status != 'revoked' ORDER BY created_at`, t.id,
+        ));
+      }
+      if (action === 'archive' && method === 'POST') {
+        if (!owned) return json({ error: 'Forbidden' }, 403);
+        this.sql.exec(`UPDATE templates SET archived_at = ? WHERE id = ?`, new Date().toISOString(), t.id);
+        return json({ status: 'ok' });
+      }
+      if (action === 'unarchive' && method === 'POST') {
+        if (!owned) return json({ error: 'Forbidden' }, 403);
+        this.sql.exec(`UPDATE templates SET archived_at = NULL WHERE id = ?`, t.id);
+        return json({ status: 'ok' });
+      }
+      if (action === 'copy' && method === 'POST') {
+        if (t.archived_at) return json({ error: 'Template is archived' }, 409);
+        const bytes = await this.loadPdf(t.pdf_key, t.pdf_blob);
+        if (!bytes) return json({ error: 'Template document is unavailable' }, 409);
+        const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
+        const key = await this.storePdf('templates', id, bytes);
+        this.sql.exec(
+          `INSERT INTO templates (id, name, created_by, pdf_blob, pdf_key, page_count, fields_json, roles_json, is_adhoc, is_shared, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+          id, `Copy of ${t.name}`.slice(0, 255), user.email, key ? null : bytes, key,
+          t.page_count, t.fields_json || '[]', t.roles_json || '[]', new Date().toISOString(),
+        );
+        return json(this.templateOut(user, this.one<any>(`SELECT * FROM templates WHERE id = ?`, id)), 201);
+      }
+      return json({ error: 'Endpoint not found' }, 404);
     }
 
     if (path.match(/^\/api\/files\/template-pdf\/[A-Za-z0-9_-]+$/) && method === 'GET') {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
       const id = path.split('/').pop()!;
-      const t = this.one<any>(`SELECT name, pdf_blob, pdf_key FROM templates WHERE id = ? AND created_by = ?`, id, user.email);
+      const t = this.one<any>(`SELECT * FROM templates WHERE id = ? AND archived_at IS NULL`, id);
+      if (t && !this.canUseTemplate(t, user)) return json({ error: 'Not found' }, 404);
       const bytes = t ? await this.loadPdf(t.pdf_key, t.pdf_blob) : null;
       if (!bytes) return json({ error: 'Not found' }, 404);
       return new Response(bytes.buffer as ArrayBuffer, {
@@ -1040,48 +1698,9 @@ export class PumasiSignService implements DurableObject {
       const files = form.getAll('files').filter((f): f is File => f instanceof File);
       if (!files.length) return json({ error: 'No files uploaded' }, 400);
 
-      const merged = await PDFDocument.create();
-      for (const file of files) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const lower = file.name.toLowerCase();
-        const ext = lower.split('.').pop() || '';
-        if (lower.endsWith('.pdf')) {
-          const src = await PDFDocument.load(bytes).catch(() => null);
-          if (!src) return json({ error: `"${file.name}" is not a readable PDF.` }, 422);
-          const pages = await merged.copyPages(src, src.getPageIndices());
-          for (const p of pages) merged.addPage(p);
-        } else if (/\.(png|jpe?g)$/.test(lower)) {
-          const img = lower.endsWith('.png') ? await merged.embedPng(bytes) : await merged.embedJpg(bytes);
-          const page = merged.addPage([612, 792]);
-          const scale = Math.min(552 / img.width, 712 / img.height, 1);
-          page.drawImage(img, {
-            x: (612 - img.width * scale) / 2,
-            y: (792 - img.height * scale) / 2,
-            width: img.width * scale,
-            height: img.height * scale,
-          });
-        } else if (SUPPORTED_OFFICE_FORMATS.has(ext)) {
-          const cfg = await this.graphConfig();
-          if (!cfg) {
-            return json({ error: `"${file.name}": Office conversion is not configured on this deployment. Convert to PDF first.` }, 422);
-          }
-          const pdfBytes = await convertOfficeToPdfViaGraph(bytes, ext, cfg);
-          if (!pdfBytes) {
-            return json({ error: `"${file.name}" could not be converted. Check the file opens in Office, or convert it to PDF yourself.` }, 422);
-          }
-          const src = await PDFDocument.load(pdfBytes).catch(() => null);
-          if (!src) return json({ error: `"${file.name}": conversion produced an unreadable PDF.` }, 422);
-          const pages = await merged.copyPages(src, src.getPageIndices());
-          for (const p of pages) merged.addPage(p);
-        } else {
-          return json({ error: `"${file.name}": PDF, Office documents (Word, PowerPoint, Excel), PNG, and JPG are supported.` }, 422);
-        }
-      }
-      const out = await merged.save();
-      if (out.length > this.maxPdfBytes()) {
-        return json({ error: `The combined document is too large (${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit).` }, 413);
-      }
-      return new Response(out.buffer as ArrayBuffer, {
+      const prepared = await this.prepareDocuments(files);
+      if (!prepared.merged) return json({ error: prepared.error }, prepared.error?.includes('limit') ? 413 : 422);
+      return new Response(prepared.merged.buffer as ArrayBuffer, {
         headers: { 'Content-Type': 'application/pdf', ...corsHeaders },
       });
     }
@@ -1091,14 +1710,13 @@ export class PumasiSignService implements DurableObject {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
       const form = await req.formData();
-      const file = form.get('file');
-      if (!(file instanceof File)) return json({ error: 'A document file is required' }, 400);
-      const pdfBytes = new Uint8Array(await file.arrayBuffer());
-      if (pdfBytes.length > this.maxPdfBytes()) {
-        return json({ error: `The document is too large (${Math.round(this.maxPdfBytes() / 1_000_000)}MB limit).` }, 413);
-      }
-      const doc = await PDFDocument.load(pdfBytes).catch(() => null);
-      if (!doc) return json({ error: 'The uploaded file is not a readable PDF.' }, 422);
+      const sourceFiles = form.getAll('documents').filter((f): f is File => f instanceof File);
+      const legacyFile = form.get('file');
+      const files = sourceFiles.length ? sourceFiles : legacyFile instanceof File ? [legacyFile] : [];
+      if (!files.length) return json({ error: 'At least one document file is required' }, 400);
+      const prepared = await this.prepareDocuments(files);
+      if (!prepared.merged || !prepared.documents) return json({ error: prepared.error }, prepared.error?.includes('limit') ? 413 : 422);
+      const pdfBytes = prepared.merged;
 
       const title = String(form.get('title') || 'Untitled Agreement').slice(0, 200);
       const message = form.get('message') != null ? String(form.get('message')).slice(0, 2000) : null;
@@ -1117,7 +1735,7 @@ export class PumasiSignService implements DurableObject {
       if (!signers.some((s) => !s.is_cc)) return json({ error: 'At least one signer is required' }, 400);
 
       const now = new Date().toISOString();
-      const pageCount = doc.getPageCount();
+      const pageCount = prepared.documents.reduce((sum, document) => sum + document.pageCount, 0);
 
       // The backing adhoc template lets a draft reload into the wizard later.
       const tplId = `tpl-${crypto.randomUUID().slice(0, 8)}`;
@@ -1128,17 +1746,18 @@ export class PumasiSignService implements DurableObject {
         tplId, title, user.email, tplKey ? null : pdfBytes, tplKey, pageCount, JSON.stringify(fields),
         JSON.stringify([...new Set(fields.map((f: any) => f.role).filter(Boolean))]), now,
       );
-
       const id = `sub-${crypto.randomUUID().slice(0, 10)}`;
       const pdfKey = await this.storePdf('originals', id, pdfBytes);
       this.sql.exec(
         `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, original_pdf_key, page_count, template_id,
                                   reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, crypto.randomUUID().slice(0, 8), title, message, user.email,
+        id, newEnvelopeUid(), title, message, user.email,
         isDraft ? 'draft' : 'pending', pdfKey ? null : pdfBytes, pdfKey, pageCount, tplId,
         remindersEnabled ? 1 : 0, reminderInterval, expiresAt, now, now,
       );
+      await this.persistSubmissionDocuments(id, prepared.documents, now);
+      this.sql.exec(`UPDATE submissions SET original_hash = ? WHERE id = ?`, await this.sha256(pdfBytes), id);
 
       const created = this.createSubmittersAndFields(user, id, signers, fields, now);
       if (created.error) return json({ error: created.error }, 400);
@@ -1155,10 +1774,10 @@ export class PumasiSignService implements DurableObject {
       if (!user) return json({ error: 'Not signed in' }, 401);
       const body: any = await req.json();
       const tpl = this.one<any>(
-        `SELECT id, name, pdf_blob, pdf_key, page_count, fields_json FROM templates WHERE id = ? AND created_by = ?`,
-        String(body.template_id || ''), user.email,
+        `SELECT id, name, created_by, pdf_blob, pdf_key, page_count, fields_json FROM templates
+          WHERE id = ? AND archived_at IS NULL`, String(body.template_id || ''),
       );
-      if (!tpl) return json({ error: 'Template not found' }, 404);
+      if (!tpl || !this.canUseTemplate(tpl, user)) return json({ error: 'Template not found' }, 404);
       const signers: any[] = body.signers || [];
       if (!signers.some((s) => !s.is_cc)) return json({ error: 'At least one signer is required' }, 400);
 
@@ -1171,12 +1790,13 @@ export class PumasiSignService implements DurableObject {
         `INSERT INTO submissions (id, public_uid, title, message, created_by, status, original_pdf_blob, original_pdf_key, page_count, template_id,
                                   reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, crypto.randomUUID().slice(0, 8),
+        id, newEnvelopeUid(),
         String(body.title || tpl.name).slice(0, 200), body.message ?? null, user.email,
         isDraft ? 'draft' : 'pending', pdfKey ? null : tplPdf, pdfKey, tpl.page_count || 1, tpl.id,
         body.reminders_enabled === false ? 0 : 1, Number(body.reminder_interval_days) || 3,
         body.expires_at ?? null, now, now,
       );
+      if (tplPdf) this.sql.exec(`UPDATE submissions SET original_hash = ? WHERE id = ?`, await this.sha256(tplPdf), id);
 
       const fields = tpl.fields_json ? JSON.parse(tpl.fields_json) : [];
       const created = this.createSubmittersAndFields(user, id, signers, fields, now);
@@ -1261,6 +1881,25 @@ export class PumasiSignService implements DurableObject {
           }];
         });
         return json({ submission_id: sub.id, public_uid: sub.public_uid, title: sub.title, status: sub.status, entries });
+      }
+
+      if (method === 'GET' && action === 'documents') {
+        const documents = this.all<any>(
+          `SELECT id, filename, position, page_count, page_start FROM submission_documents
+            WHERE submission_id = ? ORDER BY position ASC`, sub.id,
+        );
+        return json(documents.length ? documents.map((document) => ({
+          id: document.id,
+          filename: document.filename,
+          order: document.position,
+          page_count: document.page_count,
+          page_start: document.page_start,
+          download_url: `/api/files/submission-document/${document.id}`,
+        })) : [{
+          id: sub.id, filename: `${sub.title}.pdf`, order: 0,
+          page_count: sub.page_count || 1, page_start: 0,
+          download_url: `/api/files/document-preview/${sub.id}`,
+        }]);
       }
 
       if (method === 'GET' && action === 'pdf') {
@@ -1384,14 +2023,26 @@ export class PumasiSignService implements DurableObject {
 
       if (method === 'DELETE' && !action) {
         if (sub.status !== 'draft') return json({ error: 'Only drafts can be deleted' }, 409);
-        for (const key of [sub.original_pdf_key, sub.completed_pdf_key]) {
+        for (const key of [sub.original_pdf_key, sub.completed_pdf_key, sub.certificate_pdf_key]) {
           if (key) await this.docs()?.deleteDocument(String(key)).catch(() => {});
+        }
+        for (const attachment of this.all<{ data_key: string | null }>(
+          `SELECT a.data_key FROM attachments a JOIN submitters s ON s.id = a.submitter_id WHERE s.submission_id = ?`, sub.id,
+        )) {
+          if (attachment.data_key) await this.docs()?.deleteDocument(attachment.data_key).catch(() => {});
+        }
+        for (const document of this.all<{ pdf_key: string | null }>(
+          `SELECT pdf_key FROM submission_documents WHERE submission_id = ?`, sub.id,
+        )) {
+          if (document.pdf_key) await this.docs()?.deleteDocument(document.pdf_key).catch(() => {});
         }
         if (sub.template_id) {
           const t = this.one<any>(`SELECT pdf_key FROM templates WHERE id = ? AND is_adhoc = 1`, sub.template_id);
           if (t?.pdf_key) await this.docs()?.deleteDocument(String(t.pdf_key)).catch(() => {});
         }
         this.sql.exec(`DELETE FROM submission_fields WHERE submission_id = ?`, sub.id);
+        this.sql.exec(`DELETE FROM attachments WHERE submitter_id IN (SELECT id FROM submitters WHERE submission_id = ?)`, sub.id);
+        this.sql.exec(`DELETE FROM submission_documents WHERE submission_id = ?`, sub.id);
         this.sql.exec(`DELETE FROM submitters WHERE submission_id = ?`, sub.id);
         this.sql.exec(`DELETE FROM audit_events WHERE submission_id = ?`, sub.id);
         this.sql.exec(`DELETE FROM submissions WHERE id = ?`, sub.id);
@@ -1443,7 +2094,7 @@ export class PumasiSignService implements DurableObject {
                                     reminders_enabled, reminder_interval_days, expires_at, created_at, updated_at)
            SELECT ?, ?, title, message, created_by, 'draft', ?, ?, page_count, template_id,
                   reminders_enabled, reminder_interval_days, NULL, ?, ? FROM submissions WHERE id = ?`,
-          newId, crypto.randomUUID().slice(0, 8), newKey ? null : srcPdf, newKey, now, now, sub.id,
+          newId, newEnvelopeUid(), newKey ? null : srcPdf, newKey, now, now, sub.id,
         );
         const idMap = new Map<string, string>();
         for (const s of this.all<any>(`SELECT * FROM submitters WHERE submission_id = ?`, sub.id)) {
@@ -1464,6 +2115,20 @@ export class PumasiSignService implements DurableObject {
             f.required ?? 1, f.font_size ?? null, f.options_json ?? null, f.default_value ?? null, f.field_role ?? null,
           );
         }
+        for (const document of this.all<any>(
+          `SELECT * FROM submission_documents WHERE submission_id = ? ORDER BY position ASC`, sub.id,
+        )) {
+          const bytes = await this.loadPdf(document.pdf_key, document.pdf_blob);
+          if (!bytes) continue;
+          const documentId = `doc-${crypto.randomUUID().slice(0, 10)}`;
+          const key = await this.storePdf(`submission-documents/${newId}`, documentId, bytes);
+          this.sql.exec(
+            `INSERT INTO submission_documents (id, submission_id, filename, position, page_count, page_start, pdf_blob, pdf_key, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            documentId, newId, document.filename, document.position, document.page_count, document.page_start,
+            key ? null : bytes, key, now,
+          );
+        }
         this.audit(newId, 'created', user.email, user.name, undefined, { copied_from: sub.id });
         return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, newId)), 201);
       }
@@ -1477,8 +2142,129 @@ export class PumasiSignService implements DurableObject {
         return json({ ok: true });
       }
 
-      if (method === 'POST' && (action === 'save-as-template' || action === 'retry-completion' || action === 'replace-document')) {
-        return json({ error: 'Not implemented yet in this edition' }, 501);
+      if (method === 'POST' && action === 'retry-completion') {
+        if (sub.status === 'completed') return json(this.submissionOut(user, sub));
+        if (isTerminal(sub.status)) return json({ error: 'This envelope is already closed' }, 409);
+        const signers = this.one<{ total: number; unfinished: number }>(
+          `SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN status != 'signed' THEN 1 ELSE 0 END) AS unfinished
+             FROM submitters WHERE submission_id = ? AND is_cc = 0`,
+          sub.id,
+        );
+        if ((signers?.total ?? 0) === 0 || (signers?.unfinished ?? 0) !== 0) {
+          return json({ error: 'Completion can only be retried after every signer has finished' }, 409);
+        }
+        const completed = await this.finalize(sub.id, new Date().toISOString());
+        if (!completed) {
+          return json({ error: 'The final document could not be produced. Your signatures are saved; try again shortly.' }, 503);
+        }
+        return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, sub.id)));
+      }
+
+      if (method === 'POST' && action === 'save-as-template') {
+        const bytes = await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob);
+        if (!bytes) return json({ error: 'The envelope document is unavailable' }, 409);
+        const signerRows = this.all<any>(
+          `SELECT id, role FROM submitters WHERE submission_id = ? AND is_cc = 0 ORDER BY signing_order ASC, created_at ASC`,
+          sub.id,
+        );
+        const roleBySubmitter = new Map<string, string>();
+        const roles = signerRows.map((s, i) => {
+          const role = `Signer ${i + 1}`;
+          roleBySubmitter.set(s.id, role);
+          return role;
+        });
+        const fields = this.fieldDefs(sub.id).map((field: any) => {
+          if (field.type === 'label') return field;
+          const row = this.one<{ submitter_id: string }>(`SELECT submitter_id FROM submission_fields WHERE id = ?`, field.id);
+          return { ...field, role: row ? (roleBySubmitter.get(row.submitter_id) || field.role) : field.role };
+        });
+        const id = `tpl-${crypto.randomUUID().slice(0, 8)}`;
+        const key = await this.storePdf('templates', id, bytes);
+        this.sql.exec(
+          `INSERT INTO templates (id, name, created_by, pdf_blob, pdf_key, page_count, fields_json, roles_json, is_adhoc, is_shared, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+          id, String(sub.title).slice(0, 255), user.email, key ? null : bytes, key,
+          sub.page_count || 1, JSON.stringify(fields), JSON.stringify(roles), new Date().toISOString(),
+        );
+        return json(this.templateOut(user, this.one<any>(`SELECT * FROM templates WHERE id = ?`, id)), 201);
+      }
+
+      if (method === 'POST' && action === 'replace-document') {
+        if (sub.status !== 'draft' && sub.status !== 'pending') {
+          return json({ error: 'Only draft or awaiting-signature envelopes can be corrected' }, 409);
+        }
+        const alreadySigned = this.one<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM submitters WHERE submission_id = ? AND status = 'signed'`, sub.id,
+        );
+        if ((alreadySigned?.n ?? 0) > 0) {
+          return json({ error: 'The documents cannot be replaced after a signer has finished' }, 409);
+        }
+        const form = await req.formData();
+        const multi = form.getAll('documents').filter((file): file is File => file instanceof File);
+        const legacy = form.get('file');
+        const files = multi.length ? multi : legacy instanceof File ? [legacy] : [];
+        if (!files.length) return json({ error: 'At least one replacement document is required' }, 400);
+        const prepared = await this.prepareDocuments(files);
+        if (!prepared.merged || !prepared.documents) {
+          return json({ error: prepared.error }, prepared.error?.includes('limit') ? 413 : 422);
+        }
+        const pageCount = prepared.documents.reduce((total, document) => total + document.pageCount, 0);
+        const outOfRange = this.one<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM submission_fields WHERE submission_id = ? AND page >= ?`, sub.id, pageCount,
+        );
+        if ((outOfRange?.n ?? 0) > 0) {
+          return json({ error: 'The replacement has fewer pages than the existing field placement. Move or remove those fields first.' }, 422);
+        }
+
+        // Write new R2 objects before switching the database references. A
+        // storage failure therefore leaves the existing agreement untouched.
+        const revision = crypto.randomUUID().slice(0, 8);
+        const originalKey = await this.storePdf('originals', `${sub.id}-${revision}`, prepared.merged);
+        const storedDocuments: Array<(typeof prepared.documents)[number] & { key: string | null }> = [];
+        for (const document of prepared.documents) {
+          const key = await this.storePdf(`submission-documents/${sub.id}`, document.id, document.bytes);
+          storedDocuments.push({ ...document, key });
+        }
+        let templateKey: string | null = null;
+        const adhocTemplate = sub.template_id
+          ? this.one<any>(`SELECT id, pdf_key FROM templates WHERE id = ? AND is_adhoc = 1`, sub.template_id)
+          : null;
+        if (adhocTemplate) templateKey = await this.storePdf('templates', `${adhocTemplate.id}-${revision}`, prepared.merged);
+
+        const oldDocuments = this.all<{ pdf_key: string | null }>(
+          `SELECT pdf_key FROM submission_documents WHERE submission_id = ?`, sub.id,
+        );
+        this.sql.exec(`DELETE FROM submission_documents WHERE submission_id = ?`, sub.id);
+        for (const document of storedDocuments) {
+          this.sql.exec(
+            `INSERT INTO submission_documents (id, submission_id, filename, position, page_count, page_start, pdf_blob, pdf_key, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            document.id, sub.id, document.filename, document.position, document.pageCount, document.pageStart,
+            document.key ? null : document.bytes, document.key, now,
+          );
+          this.sql.exec(`UPDATE submission_documents SET sha256 = ? WHERE id = ?`, await this.sha256(document.bytes), document.id);
+        }
+        this.sql.exec(
+          `UPDATE submissions SET original_pdf_blob = ?, original_pdf_key = ?, completed_pdf_blob = NULL,
+             completed_pdf_key = NULL, completed_at = NULL, page_count = ?, updated_at = ? WHERE id = ?`,
+          originalKey ? null : prepared.merged, originalKey, pageCount, now, sub.id,
+        );
+        this.sql.exec(`UPDATE submissions SET original_hash = ? WHERE id = ?`, await this.sha256(prepared.merged), sub.id);
+        if (adhocTemplate) {
+          this.sql.exec(
+            `UPDATE templates SET pdf_blob = ?, pdf_key = ?, page_count = ? WHERE id = ?`,
+            templateKey ? null : prepared.merged, templateKey, pageCount, adhocTemplate.id,
+          );
+        }
+        this.audit(sub.id, 'document_replaced', user.email, user.name, undefined, {
+          documents: prepared.documents.map((document) => document.filename), page_count: pageCount,
+        });
+
+        for (const key of [sub.original_pdf_key, sub.completed_pdf_key, adhocTemplate?.pdf_key, ...oldDocuments.map((d) => d.pdf_key)]) {
+          if (key) await this.docs()?.deleteDocument(String(key)).catch(() => {});
+        }
+        return json(this.submissionOut(user, this.one<any>(`SELECT * FROM submissions WHERE id = ?`, sub.id)));
       }
 
       return json({ error: 'Endpoint not found' }, 404);
@@ -1526,6 +2312,10 @@ export class PumasiSignService implements DurableObject {
         if (tokenStatus === 'cancelled' || tokenStatus === 'declined' || tokenStatus === 'expired') {
           return json({ error: 'This envelope is no longer active.' }, 410);
         }
+        const retry = await this.rateLimited(
+          'signer-code-request', [`ip:${this.clientIp(req)}`, `submitter:${sub.id}`], 10, 3600,
+        );
+        if (retry != null) return json({ error: 'Too many verification-code requests. Try again later.' }, 429, { 'Retry-After': String(retry) });
         if (!mailConfigured(this.env)) return json({ error: 'Email delivery is not configured.' }, 503);
         const issued = this.issueCode(`signer:${sub.id}`);
         if ('error' in issued) return json({ error: issued.error }, 429);
@@ -1543,6 +2333,10 @@ export class PumasiSignService implements DurableObject {
 
       if (tokenMatch[2] === 'verify' && method === 'POST') {
         const body: any = await req.json();
+        const retry = await this.rateLimited(
+          'signer-code-verify', [`ip:${this.clientIp(req)}`, `submitter:${sub.id}`], 6, 900,
+        );
+        if (retry != null) return json({ error: 'Too many verification attempts. Try again later.' }, 429, { 'Retry-After': String(retry) });
         if (!this.consumeCode(`signer:${sub.id}`, String(body.code || '').trim())) {
           return json({ error: 'Invalid or expired verification code' }, 401);
         }
@@ -1559,7 +2353,7 @@ export class PumasiSignService implements DurableObject {
     }
 
     // ── signer: the signing session itself ────────────────────────────────
-    const signMatch = path.match(/^\/api\/sign\/([A-Za-z0-9_-]+)(?:\/(signature|complete|decline))?$/);
+    const signMatch = path.match(/^\/api\/sign\/([A-Za-z0-9_-]+)(?:\/(signature|attachment|complete|decline))?$/);
     if (signMatch && signMatch[1] !== 'token') {
       const submitterId = signMatch[1];
       if (!this.authorizedForSubmitter(req, submitterId)) {
@@ -1601,6 +2395,7 @@ export class PumasiSignService implements DurableObject {
           saved_signature_id: savedSig?.id ?? null,
           role_names: roleNames,
           my_name: me.name,
+          disclosure: { version: CONSENT_VERSION, text: CONSENT_TEXT },
         });
       }
 
@@ -1618,6 +2413,43 @@ export class PumasiSignService implements DurableObject {
         return json({ signature_id: sigId });
       }
 
+      if (signMatch[2] === 'attachment' && method === 'POST') {
+        if (isTerminal(submission.status) || me.status === 'signed') {
+          return json({ error: 'This envelope is no longer open for attachments' }, 409);
+        }
+        const ownsField = this.one<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM submission_fields WHERE submission_id = ? AND submitter_id = ? AND type = 'attachment'`,
+          submission.id, me.id,
+        );
+        if ((ownsField?.n ?? 0) === 0) return json({ error: 'No attachment field is assigned to this signer' }, 409);
+        const form = await req.formData();
+        const file = form.get('file');
+        if (!(file instanceof File)) return json({ error: 'A file is required' }, 400);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const limit = this.docs() ? 10 * 1024 * 1024 : 1_000_000;
+        if (bytes.length === 0) return json({ error: 'The attachment is empty' }, 422);
+        if (bytes.length > limit) return json({ error: `Attachment exceeds the ${Math.round(limit / 1_000_000)} MB limit` }, 413);
+        const contentType = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46
+          ? 'application/pdf'
+          : bytes.slice(0, 8).every((v, i) => v === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][i])
+            ? 'image/png'
+            : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+              ? 'image/jpeg' : null;
+        if (!contentType) return json({ error: 'Attachment must be a PDF, PNG, or JPEG file' }, 422);
+        const safeName = safeAttachmentFilename(file.name, contentType);
+        if (!safeName.filename) return json({ error: safeName.error }, 422);
+        const id = `att-${crypto.randomUUID().slice(0, 10)}`;
+        const key = this.docs() ? `attachments/${me.id}/${id}` : null;
+        if (key) await this.docs()!.putDocument(key, bytes, contentType);
+        const filename = safeName.filename;
+        this.sql.exec(
+          `INSERT INTO attachments (id, submitter_id, filename, content_type, size, data_blob, data_key, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, me.id, filename, contentType, bytes.length, key ? null : bytes, key, new Date().toISOString(),
+        );
+        return json({ attachment_id: id, filename }, 201);
+      }
+
       if (signMatch[2] === 'complete' && method === 'POST') {
         // `completed` belongs here too: without it a CC recipient -- who never
         // held the envelope open (:1479's `AND is_cc = 0`) -- signs afterwards,
@@ -1631,6 +2463,9 @@ export class PumasiSignService implements DurableObject {
         if (!this.submitterTurn(me)) return json({ error: 'Earlier signers have not finished yet' }, 409);
 
         const body: any = await req.json();
+        if (body.consent_accepted !== true || body.consent_version !== CONSENT_VERSION) {
+          return json({ error: 'You must accept the current electronic records and signature disclosure before finishing' }, 422);
+        }
         const values: Record<string, unknown> = body.values || {};
         const now = new Date().toISOString();
         const clientIp = req.headers.get('cf-connecting-ip') || '0.0.0.0';
@@ -1651,16 +2486,53 @@ export class PumasiSignService implements DurableObject {
             }
             const sig = this.one<any>(`SELECT id, image_blob FROM signatures WHERE id = ? AND submitter_id = ?`, String(v), me.id);
             if (!sig) return json({ error: 'Unknown signature reference' }, 400);
-            if (f.type === 'signature' && sig.image_blob) signatureBytes = new Uint8Array(sig.image_blob);
+            if (sig.image_blob && (signatureBytes == null || f.type === 'signature')) {
+              signatureBytes = new Uint8Array(sig.image_blob);
+            }
             this.sql.exec(`UPDATE submission_fields SET value = ? WHERE id = ?`, String(v), f.id);
           } else if (f.type === 'checkbox') {
             this.sql.exec(`UPDATE submission_fields SET value = ? WHERE id = ?`, v === true || v === 'true' ? 'true' : 'false', f.id);
+          } else if (f.type === 'attachment' && v != null) {
+            const attachment = this.one<any>(`SELECT id, filename FROM attachments WHERE id = ? AND submitter_id = ?`, String(v), me.id);
+            if (!attachment) return json({ error: `field ${f.id}: attachment not found or not yours` }, 422);
+            this.sql.exec(`UPDATE submission_fields SET value = ? WHERE id = ?`, String(v), f.id);
           } else if (v != null) {
             this.sql.exec(`UPDATE submission_fields SET value = ? WHERE id = ?`, String(v).slice(0, 2000), f.id);
           } else if (f.required && f.type !== 'label') {
             return json({ error: 'A required field is missing' }, 400);
           }
         }
+
+        const evidenceSource = this.one<any>(
+          `SELECT original_hash, original_pdf_key, original_pdf_blob FROM submissions WHERE id = ?`, submission.id,
+        );
+        const reviewedPdf = evidenceSource?.original_hash
+          ? null
+          : await this.loadPdf(evidenceSource?.original_pdf_key, evidenceSource?.original_pdf_blob);
+        const reviewedHash = evidenceSource?.original_hash || (reviewedPdf ? await this.sha256(reviewedPdf) : null);
+        if (!reviewedHash) return json({ error: 'The document evidence is unavailable' }, 409);
+        const documentManifest: any[] = [];
+        for (const document of this.all<any>(
+          `SELECT filename, position, page_count, pdf_blob, pdf_key, sha256 FROM submission_documents WHERE submission_id = ? ORDER BY position ASC`, submission.id,
+        )) {
+          let hash = document.sha256;
+          if (!hash) {
+            const bytes = await this.loadPdf(document.pdf_key, document.pdf_blob);
+            if (!bytes) return json({ error: `Document evidence is unavailable for ${document.filename}` }, 409);
+            hash = await this.sha256(bytes);
+          }
+          documentManifest.push({ filename: document.filename, order: document.position, page_count: document.page_count, sha256: hash });
+        }
+        if (documentManifest.length === 0) {
+          documentManifest.push({ filename: `${submission.title}.pdf`, order: 0, page_count: submission.page_count || 1, sha256: reviewedHash });
+        }
+        this.sql.exec(
+          `INSERT INTO signer_consents (id, submission_id, submitter_id, disclosure_version, disclosure_text, accepted_at,
+             ip_address, user_agent, reviewed_document_hash, document_manifest_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `consent-${crypto.randomUUID().slice(0, 10)}`, submission.id, me.id, CONSENT_VERSION, CONSENT_TEXT, now,
+          clientIp, userAgent, reviewedHash, JSON.stringify(documentManifest),
+        );
 
         this.sql.exec(
           `UPDATE submitters SET status = 'signed', signed_at = ?, ip_address = ?, user_agent = ?, signature_blob = ? WHERE id = ?`,
@@ -1673,7 +2545,10 @@ export class PumasiSignService implements DurableObject {
         );
 
         if ((remaining?.n ?? 0) === 0) {
-          await this.finalize(submission.id, now);
+          const completed = await this.finalize(submission.id, now);
+          if (!completed) {
+            return json({ error: 'Your signature was saved, but the final document could not be produced. Please try again shortly.' }, 503);
+          }
         } else {
           await this.inviteCurrentTurn(submission.id);
         }
@@ -1704,10 +2579,41 @@ export class PumasiSignService implements DurableObject {
     }
 
     // ── files (owner or that envelope's signer) ───────────────────────────
-    const fileMatch = path.match(/^\/api\/files\/(document-preview|signed-pdf|signature)\/([A-Za-z0-9_-]+)$/);
+    const fileMatch = path.match(/^\/api\/files\/(document-preview|signed-pdf|certificate|signature|attachment|submission-document)\/([A-Za-z0-9_-]+)$/);
     if (fileMatch && method === 'GET') {
       const kind = fileMatch[1];
       const targetId = fileMatch[2];
+
+      if (kind === 'submission-document') {
+        const document = this.one<any>(`SELECT * FROM submission_documents WHERE id = ?`, targetId);
+        if (!document || !this.authorizedForSubmission(req, document.submission_id)) return json({ error: 'Not found' }, 404);
+        const bytes = await this.loadPdf(document.pdf_key, document.pdf_blob);
+        if (!bytes) return json({ error: 'Not available' }, 404);
+        return new Response(bytes.buffer as ArrayBuffer, {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${String(document.filename).replace(/["\r\n]/g, '_').replace(/\.[^.]+$/, '')}.pdf"`,
+            ...corsHeaders,
+          },
+        });
+      }
+
+      if (kind === 'attachment') {
+        const attachment = this.one<any>(
+          `SELECT a.*, s.submission_id FROM attachments a JOIN submitters s ON s.id = a.submitter_id WHERE a.id = ?`, targetId,
+        );
+        if (!attachment || !this.authorizedForSubmission(req, attachment.submission_id)) return json({ error: 'Not found' }, 404);
+        const stored = attachment.data_key ? await this.docs()?.getDocument(attachment.data_key) : null;
+        const bytes = stored?.data ?? (attachment.data_blob ? new Uint8Array(attachment.data_blob) : null);
+        if (!bytes) return json({ error: 'Not available' }, 404);
+        return new Response(bytes.buffer as ArrayBuffer, {
+          headers: {
+            'Content-Type': attachment.content_type,
+            'Content-Disposition': `attachment; filename="${String(attachment.filename).replace(/["\r\n]/g, '_')}"`,
+            ...corsHeaders,
+          },
+        });
+      }
 
       if (kind === 'signature') {
         const sig = this.one<any>(`SELECT submitter_id, image_blob FROM signatures WHERE id = ?`, targetId);
@@ -1716,16 +2622,18 @@ export class PumasiSignService implements DurableObject {
       }
 
       if (!this.authorizedForSubmission(req, targetId)) return json({ error: 'Not found' }, 404);
-      const row = this.one<any>(`SELECT title, original_pdf_blob, original_pdf_key, completed_pdf_blob, completed_pdf_key FROM submissions WHERE id = ?`, targetId);
+      const row = this.one<any>(`SELECT title, original_pdf_blob, original_pdf_key, completed_pdf_blob, completed_pdf_key, certificate_pdf_blob, certificate_pdf_key FROM submissions WHERE id = ?`, targetId);
       if (!row) return json({ error: 'Not found' }, 404);
-      const pdf = kind === 'signed-pdf'
+      const pdf = kind === 'certificate'
+        ? await this.loadPdf(row.certificate_pdf_key, row.certificate_pdf_blob)
+        : kind === 'signed-pdf'
         ? await this.loadPdf(row.completed_pdf_key, row.completed_pdf_blob)
         : await this.loadPdf(row.original_pdf_key, row.original_pdf_blob);
       if (!pdf) return json({ error: 'Not available' }, 404);
       return new Response(pdf.buffer as ArrayBuffer, {
         headers: {
           'Content-Type': 'application/pdf',
-          'Content-Disposition': `${kind === 'signed-pdf' ? 'attachment' : 'inline'}; filename="${String(row.title).replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`,
+          'Content-Disposition': `${kind === 'document-preview' ? 'inline' : 'attachment'}; filename="${String(row.title).replace(/[^a-zA-Z0-9_-]/g, '_')}${kind === 'certificate' ? '_certificate' : ''}.pdf"`,
           ...corsHeaders,
         },
       });
@@ -1735,20 +2643,32 @@ export class PumasiSignService implements DurableObject {
   }
 
   /** All signed: stamp, certify, store, notify everyone (CCs included). */
-  private async finalize(submissionId: string, now: string): Promise<void> {
+  private async finalize(submissionId: string, now: string): Promise<boolean> {
     const sub = this.one<any>(
       `SELECT id, public_uid, title, created_by, original_pdf_blob, original_pdf_key FROM submissions WHERE id = ?`, submissionId,
     );
-    if (!sub) return;
+    if (!sub) return false;
     const originalPdf = await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob);
 
+    if (!originalPdf) {
+      this.audit(submissionId, 'completion_failed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+        reason: 'original_document_unavailable',
+      });
+      return false;
+    }
+
     const allSubmitters: SignerInfo[] = this.all<any>(
-      `SELECT id, name, email, role, signed_at, ip_address, user_agent, signature_blob FROM submitters WHERE submission_id = ? AND is_cc = 0`,
+      `SELECT s.id, s.name, s.email, s.role, s.signed_at, s.ip_address, s.user_agent, s.signature_blob,
+              c.disclosure_version, c.accepted_at, c.reviewed_document_hash
+         FROM submitters s LEFT JOIN signer_consents c ON c.submitter_id = s.id
+        WHERE s.submission_id = ? AND s.is_cc = 0`,
       submissionId,
     ).map((s: any) => ({
       id: s.id, name: s.name, email: s.email, role: s.role,
       signedAt: s.signed_at, ipAddress: s.ip_address, userAgent: s.user_agent,
       signatureImage: s.signature_blob ? new Uint8Array(s.signature_blob) : undefined,
+      consentVersion: s.disclosure_version, consentAcceptedAt: s.accepted_at,
+      reviewedDocumentHash: s.reviewed_document_hash,
     }));
 
     const typeMap: Record<string, PlacedField['type']> = {
@@ -1759,38 +2679,63 @@ export class PumasiSignService implements DurableObject {
     const allFields: PlacedField[] = this.all<any>(
       `SELECT id, submitter_id, type, page, x, y, width, height, value, default_value FROM submission_fields WHERE submission_id = ?`,
       submissionId,
-    ).map((f: any) => ({
-      id: f.id, signerId: f.submitter_id,
-      type: typeMap[f.type] ?? 'text',
-      // The web contract is 0-based pages; stamping's PlacedField is 1-based.
-      page: f.page + 1, x: f.x, y: f.y, width: f.width, height: f.height,
-      value: f.type === 'label' ? (f.default_value ?? f.value ?? '') : (f.value ?? ''),
-    }));
+    ).map((f: any) => {
+      const selectedMark = (f.type === 'signature' || f.type === 'initials') && f.value
+        ? this.one<{ image_blob: ArrayBuffer }>(
+            `SELECT image_blob FROM signatures WHERE id = ? AND submitter_id = ?`, f.value, f.submitter_id,
+          )
+        : null;
+      return {
+        id: f.id, signerId: f.submitter_id,
+        type: typeMap[f.type] ?? 'text',
+        // The web contract is 0-based pages; stamping's PlacedField is 1-based.
+        page: f.page + 1, x: f.x, y: f.y, width: f.width, height: f.height,
+        value: f.type === 'attachment'
+          ? (this.one<{ filename: string }>(`SELECT filename FROM attachments WHERE id = ?`, f.value)?.filename ?? '')
+          : f.type === 'label' ? (f.default_value ?? f.value ?? '') : (f.value ?? ''),
+        signatureImage: selectedMark?.image_blob ? new Uint8Array(selectedMark.image_blob) : undefined,
+      };
+    });
 
-    if (originalPdf) {
-      const stampRes = await stampAndCertifyPdf({
-        originalPdfBytes: originalPdf,
-        fields: allFields,
-        signers: allSubmitters,
-        envelopeUid: sub.public_uid,
-        documentTitle: sub.title,
-        completedAt: now,
-      });
-      const completedKey = await this.storePdf('completed', submissionId, stampRes.stampedPdfBytes);
-      this.sql.exec(
-        `UPDATE submissions SET status = 'completed', completed_at = ?, completed_pdf_blob = ?, completed_pdf_key = ?, updated_at = ? WHERE id = ?`,
-        now, completedKey ? null : stampRes.stampedPdfBytes, completedKey, now, submissionId,
-      );
-      this.audit(submissionId, 'completed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
-        originalHash: stampRes.originalHash, completedHash: stampRes.completedHash,
-      });
-    } else {
-      this.sql.exec(
-        `UPDATE submissions SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?`,
-        now, now, submissionId,
-      );
-      this.audit(submissionId, 'completed', 'system@pumasi.ai', 'Pumasi Sign Engine');
+    const attachments: { filename: string; contentType: string; bytes: Uint8Array }[] = [];
+    for (const row of this.all<any>(
+      `SELECT DISTINCT a.* FROM attachments a
+       JOIN submission_fields f ON f.value = a.id
+       WHERE f.submission_id = ? AND f.type = 'attachment'`, submissionId,
+    )) {
+      const stored = row.data_key ? await this.docs()?.getDocument(row.data_key) : null;
+      const bytes = stored?.data ?? (row.data_blob ? new Uint8Array(row.data_blob) : null);
+      if (!bytes) {
+        this.audit(submissionId, 'completion_failed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+          reason: 'attachment_unavailable', attachmentId: row.id,
+        });
+        return false;
+      }
+      attachments.push({ filename: row.filename, contentType: row.content_type, bytes });
     }
+
+    const stampRes = await stampAndCertifyPdf({
+      originalPdfBytes: originalPdf,
+      fields: allFields,
+      signers: allSubmitters,
+      envelopeUid: sub.public_uid,
+      documentTitle: sub.title,
+      completedAt: now,
+      attachments,
+    });
+    const completedKey = await this.storePdf('completed', submissionId, stampRes.stampedPdfBytes);
+    const certificateKey = await this.storePdf('certificates', submissionId, stampRes.certificatePdfBytes);
+    const certificateHash = await this.sha256(stampRes.certificatePdfBytes);
+    this.sql.exec(
+      `UPDATE submissions SET status = 'completed', completed_at = ?, completed_pdf_blob = ?, completed_pdf_key = ?,
+         certificate_pdf_blob = ?, certificate_pdf_key = ?, original_hash = ?, completed_hash = ?, certificate_hash = ?, updated_at = ? WHERE id = ?`,
+      now, completedKey ? null : stampRes.stampedPdfBytes, completedKey,
+      certificateKey ? null : stampRes.certificatePdfBytes, certificateKey,
+      stampRes.originalHash, stampRes.completedHash, certificateHash, now, submissionId,
+    );
+    this.audit(submissionId, 'completed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+      originalHash: stampRes.originalHash, completedHash: stampRes.completedHash, certificateHash,
+    });
 
     await this.mailOrLog(
       sub.created_by,
@@ -1811,5 +2756,33 @@ export class PumasiSignService implements DurableObject {
         ], { cta: { label: 'Get the signed document', url: `${this.baseUrl()}/sign/t/${s.token}` } }),
       );
     }
+    const owner = this.one<{ id: string }>(`SELECT id FROM users WHERE email = ?`, sub.created_by);
+    if (owner) {
+      const alreadyNotified = new Set([
+        sub.created_by.toLowerCase(),
+        ...this.all<{ email: string }>(`SELECT email FROM submitters WHERE submission_id = ?`, submissionId)
+          .map((row) => row.email.toLowerCase()),
+      ]);
+      for (const archive of this.all<{ email: string }>(
+        `SELECT email FROM archive_recipients WHERE owner_id = ? ORDER BY email`, owner.id,
+      )) {
+        if (alreadyNotified.has(archive.email.toLowerCase())) continue;
+        const delivered = await this.mailOrLog(
+          archive.email,
+          `Archive copy: "${sub.title}" is fully signed`,
+          `The completed envelope "${sub.title}" is attached for your organization's records.\n\nThis automatic archive copy was configured by the workspace administrator.\n\n— Pumasi Sign`,
+          this.mailHtml('Completed envelope archive copy', [
+            `The completed envelope "${sub.title}" is attached for your organization's records.`,
+            'This automatic archive copy was configured by the workspace administrator.',
+          ]),
+          [
+            { filename: `${sub.title}-completed.pdf`, contentType: 'application/pdf', bytes: stampRes.stampedPdfBytes },
+            { filename: `${sub.title}-certificate.pdf`, contentType: 'application/pdf', bytes: stampRes.certificatePdfBytes },
+          ],
+        );
+        this.audit(submissionId, delivered ? 'archive_copy_sent' : 'archive_copy_failed', archive.email, 'Archive recipient');
+      }
+    }
+    return true;
   }
 }

@@ -35,5 +35,27 @@
   "vars": {
     "BASE_URL": "https://sign.pumasi.ai",
     "GITHUB_FEEDBACK_REPO": "pumasi-ai/pumasi-sign"
+  },
+  // Isolated pre-production environment. Bindings and vars are deliberately
+  // repeated because Wrangler does not inherit them into named environments.
+  // The bucket must be created before the first deployment; never substitute
+  // the production bucket as a temporary fallback.
+  "env": {
+    "staging": {
+      "name": "pumasi-sign-staging",
+      "routes": [{ "pattern": "sign-staging.pumasi.ai", "custom_domain": true }],
+      "r2_buckets": [
+        { "binding": "DOCUMENTS", "bucket_name": "pumasi-sign-documents-staging" }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "SIGN_SERVICE", "class_name": "PumasiSignService" }
+        ]
+      },
+      "vars": {
+        "BASE_URL": "https://sign-staging.pumasi.ai",
+        "GITHUB_FEEDBACK_REPO": "pumasi-ai/pumasi-sign"
+      }
+    }
   }
 }

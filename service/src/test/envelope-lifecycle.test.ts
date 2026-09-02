@@ -36,6 +36,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { newHarness, cookieValue, Harness } from './support/durable-harness.js';
+import { makePdf } from './support/pdf-probe.js';
 
 // ── seeding ─────────────────────────────────────────────────────────────────
 
@@ -69,22 +70,22 @@ interface Seeded { id: string; publicUid: string; signers: { id: string; token: 
  * An envelope in a chosen status, written straight to the store.
  *
  * Deliberately not built through POST /api/submissions: that route wants a PDF
- * and would drag pdf-lib and R2 into cases that are about status words. Every
+ * and would drag the creation contract into cases that are about status words. Every
  * TRANSITION below is still driven through fetch(); only the starting position
- * is seeded. No submission carries a PDF, which is the branch of finalize()
- * (durable.ts:1586) that completes without stamping.
+ * is seeded. Cases that reach successful completion carry a minimal real PDF;
+ * spec/0011 removed completion-without-an-artifact as an invalid state.
  */
 function seedEnvelope(
   h: Harness,
-  opts: { owner: string; status?: string; expiresAt?: string | null; signers?: SeedSigner[]; title?: string },
+  opts: { owner: string; status?: string; expiresAt?: string | null; signers?: SeedSigner[]; title?: string; pdf?: Uint8Array },
 ): Seeded {
   const id = uid('sub');
   const publicUid = uid('pub');
   const now = new Date().toISOString();
   h.db.prepare(
-    `INSERT INTO submissions (id, public_uid, title, message, created_by, status, expires_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, publicUid, opts.title ?? 'Mutual NDA', null, opts.owner, opts.status ?? 'draft', opts.expiresAt ?? null, now, now);
+    `INSERT INTO submissions (id, public_uid, title, message, created_by, status, expires_at, original_pdf_blob, original_hash, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, publicUid, opts.title ?? 'Mutual NDA', null, opts.owner, opts.status ?? 'draft', opts.expiresAt ?? null, opts.pdf ?? null, '0'.repeat(64), now, now);
 
   const signers = (opts.signers ?? [{ email: 'signer@example.test' }]).map((s, i) => {
     const sid = uid('subtr');
@@ -363,9 +364,11 @@ test('A-405 resending an invitation is scoped to this envelope and refused for a
 
 test('A-406 signing is in order, is once, and the last outstanding non-CC signer completes the envelope -- after which a CC recipient is refused and it completes exactly once', async () => {
   const h = newHarness();
+  const pdf = await makePdf(['ORDERED SIGNING AGREEMENT']);
   const env = seedEnvelope(h, {
     owner: 'owner@pumasi.ai',
     status: 'pending',
+    pdf,
     signers: [
       { email: 'first@example.test', order: 1 },
       { email: 'second@example.test', order: 2 },
@@ -374,7 +377,7 @@ test('A-406 signing is in order, is once, and the last outstanding non-CC signer
   });
   const [first, second, cc] = env.signers;
   const sign = (s: { id: string }, cookie: string) =>
-    h.fetch(`/api/sign/${s.id}/complete`, { method: 'POST', cookie, body: JSON.stringify({ values: {} }) });
+    h.fetch(`/api/sign/${s.id}/complete`, { method: 'POST', cookie, body: JSON.stringify({ values: {}, consent_accepted: true, consent_version: 'pumasi-esign-consent-v1' }) });
 
   // Out of turn: refused, and nothing is written.
   const secondCookie = await signerCookie(h, second);
@@ -555,7 +558,7 @@ test('A-408 a submitter reports `completed` while its column reads `signed`, and
   });
   const [first, second] = env.signers;
   const firstCookie = await signerCookie(h, first);
-  await h.fetch(`/api/sign/${first.id}/complete`, { method: 'POST', cookie: firstCookie, body: JSON.stringify({ values: {} }) });
+  await h.fetch(`/api/sign/${first.id}/complete`, { method: 'POST', cookie: firstCookie, body: JSON.stringify({ values: {}, consent_accepted: true, consent_version: 'pumasi-esign-consent-v1' }) });
 
   // outSubmitterStatus (durable.ts:101) rewrites `signed` to `completed` on the
   // way out. So one payload carries the word `completed` for a SUBMITTER whose
@@ -605,8 +608,10 @@ test('A-409 the worker never writes the `expired` status: a past expires_at tran
   const h = newHarness();
   const cookie = await signIn(h, 'owner@pumasi.ai');
   const past = new Date(Date.now() - 86_400_000).toISOString();
+  const pdf = await makePdf(['PAST-DEADLINE AGREEMENT']);
   const env = seedEnvelope(h, {
     owner: 'owner@pumasi.ai', status: 'pending', expiresAt: past,
+    pdf,
     signers: [{ email: 'late@example.test' }],
   });
 
@@ -632,7 +637,7 @@ test('A-409 the worker never writes the `expired` status: a past expires_at tran
   const sc = await signerCookie(h, env.signers[0]);
   assert.equal((await body(await h.fetch(`/api/sign/${env.signers[0].id}`, { cookie: sc }))).submission.expires_at, past);
   const done = await h.fetch(`/api/sign/${env.signers[0].id}/complete`, {
-    method: 'POST', cookie: sc, body: JSON.stringify({ values: {} }),
+    method: 'POST', cookie: sc, body: JSON.stringify({ values: {}, consent_accepted: true, consent_version: 'pumasi-esign-consent-v1' }),
   });
   assert.equal(done.status, 200);
   assert.deepEqual(await body(done), { ok: true, status: 'completed' });

@@ -172,11 +172,10 @@ test("draft can be edited in the wizard and then sent", async ({ browser }) => {
     await docCheckbox.check();
     await expect(docCheckbox).toBeChecked();
 
-    await admin.getByRole("button", { name: "Finish" }).click();
-    const review = admin.getByRole("dialog");
-    await expect(review.getByText("Review before signing")).toBeVisible();
-    await review.getByRole("checkbox").check({ force: true });
-    await review.getByRole("button", { name: "Sign & finish" }).click();
+    await admin.getByRole("button", { name: "Preview & finish" }).click();
+    await expect(admin.getByText("Final document preview")).toBeVisible();
+    await admin.getByLabel(/electronic records|legally binding/i).check({ force: true });
+    await admin.getByRole("button", { name: "Sign & finish" }).click();
     await expect(admin.getByText("Thanks")).toBeVisible();
 
     const completed = await (await adminContext.request.get(`/api/submissions/${newId}`)).json();

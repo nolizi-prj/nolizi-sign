@@ -11,6 +11,9 @@ export interface SignerInfo {
   userAgent?: string;
   signatureImage?: Uint8Array; // PNG bytes of drawn signature
   signatureType?: 'draw' | 'type';
+  consentVersion?: string;
+  consentAcceptedAt?: string;
+  reviewedDocumentHash?: string;
 }
 
 export interface PlacedField {
@@ -23,6 +26,8 @@ export interface PlacedField {
   width: number; // 0.0 - 1.0 normalized
   height: number; // 0.0 - 1.0 normalized
   value?: string;
+  /** The mark selected for this exact signature/initials field. */
+  signatureImage?: Uint8Array;
 }
 
 export interface StampingOptions {
@@ -32,14 +37,20 @@ export interface StampingOptions {
   envelopeUid: string;
   documentTitle: string;
   completedAt: string; // ISO 8601
+  attachments?: { filename: string; contentType: string; bytes: Uint8Array }[];
 }
 
 export interface StampingResult {
   stampedPdfBytes: Uint8Array;
+  certificatePdfBytes: Uint8Array;
   originalHash: string; // SHA-256
   completedHash: string; // SHA-256
   pageCount: number;
 }
+
+const ENVELOPE_ID_FONT_SIZE = 7;
+const ENVELOPE_ID_LEFT_INSET = 4;
+const ENVELOPE_ID_TOP_INSET = 9;
 
 /**
  * Pure deterministic PDF stamping function.
@@ -58,6 +69,7 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
 
   const signersById = new Map(opts.signers.map(s => [s.id, s]));
   const embeddedSignatures = new Map<string, any>();
+  const embeddedFieldSignatures = new Map<string, any>();
 
   // Pre-embed any image signatures
   for (const signer of opts.signers) {
@@ -68,6 +80,18 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
       } catch {
         // If PNG embed fails, will fall back to text representation
       }
+    }
+  }
+
+  // A signer may adopt a full signature and a different initials mark. Field
+  // references are authoritative; the signer-level image remains a legacy
+  // fallback for envelopes created before field-specific marks were retained.
+  for (const field of opts.fields) {
+    if (!field.signatureImage?.length) continue;
+    try {
+      embeddedFieldSignatures.set(field.id, await pdfDoc.embedPng(field.signatureImage));
+    } catch {
+      // Fall through to the text representation below.
     }
   }
 
@@ -88,11 +112,13 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
     const signer = signersById.get(field.signerId);
 
     if (field.type === 'signature' || field.type === 'initial') {
-      const sigImg = embeddedSignatures.get(field.signerId);
+      const sigImg = embeddedFieldSignatures.get(field.id) || embeddedSignatures.get(field.signerId);
       if (sigImg) {
         page.drawImage(sigImg, { x, y, width: w, height: h });
       } else {
-        const text = signer?.name || field.value || 'Signed';
+        const text = field.type === 'initial'
+          ? (signer?.name || '').split(/\s+/).filter(Boolean).map((part) => part[0]).join('').toUpperCase() || 'Initialed'
+          : signer?.name || field.value || 'Signed';
         const fontSize = Math.min(h * 0.65, 20);
         page.drawText(text, {
           x: x + 4,
@@ -158,6 +184,50 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
     }
   }
 
+  // Supporting files are part of the executed package and precede its
+  // certificate, so the certificate remains the final page.
+  for (const attachment of opts.attachments ?? []) {
+    if (attachment.contentType === 'application/pdf') {
+      const source = await PDFDocument.load(attachment.bytes).catch(() => null);
+      if (!source) continue;
+      const copied = await pdfDoc.copyPages(source, source.getPageIndices());
+      for (const page of copied) pdfDoc.addPage(page);
+    } else if (attachment.contentType === 'image/png' || attachment.contentType === 'image/jpeg') {
+      const image = attachment.contentType === 'image/png'
+        ? await pdfDoc.embedPng(attachment.bytes)
+        : await pdfDoc.embedJpg(attachment.bytes);
+      const page = pdfDoc.addPage([612, 792]);
+      const scale = Math.min(552 / image.width, 712 / image.height, 1);
+      page.drawImage(image, {
+        x: (612 - image.width * scale) / 2,
+        y: (792 - image.height * scale) / 2,
+        width: image.width * scale,
+        height: image.height * scale,
+      });
+    }
+  }
+
+  // Keep the externally safe, non-enumerable envelope identifier permanently
+  // visible on every page in the executed package. This mirrors the familiar
+  // DocuSign placement and lets printed or separated pages be correlated with
+  // the certificate. The original PDF remains unchanged in storage; this is
+  // applied only while producing the completed artifact.
+  const envelopeIdStamp = `Pumasi Sign Envelope ID: ${opts.envelopeUid}`;
+  for (const page of pdfDoc.getPages()) {
+    const { width, height } = page.getSize();
+    const size = Math.min(
+      ENVELOPE_ID_FONT_SIZE,
+      Math.max(4, (Math.max(1, width - ENVELOPE_ID_LEFT_INSET * 2) / fontSans.widthOfTextAtSize(envelopeIdStamp, ENVELOPE_ID_FONT_SIZE)) * ENVELOPE_ID_FONT_SIZE),
+    );
+    page.drawText(envelopeIdStamp, {
+      x: Math.min(ENVELOPE_ID_LEFT_INSET, Math.max(0, width - 1)),
+      y: Math.max(0, height - ENVELOPE_ID_TOP_INSET),
+      size,
+      font: fontSans,
+      color: rgb(0.45, 0.45, 0.45),
+    });
+  }
+
   // 2. Append standalone Cryptographic Audit Trail Certificate Page
   const certPage = pdfDoc.addPage([612, 792]); // Standard US Letter (8.5 x 11 in)
   const { width: cWidth, height: cHeight } = certPage.getSize();
@@ -206,9 +276,9 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
   for (const signer of opts.signers) {
     certPage.drawRectangle({
       x: 36,
-      y: curY - 55,
+      y: curY - 68,
       width: cWidth - 72,
-      height: 55,
+      height: 68,
       color: rgb(0.99, 0.99, 1.0),
       borderColor: rgb(0.9, 0.92, 0.95),
       borderWidth: 1,
@@ -254,7 +324,14 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
       color: rgb(0.15, 0.55, 0.2),
     });
 
-    curY -= 65;
+    certPage.drawText(`Consent: ${signer.consentVersion || 'legacy / not recorded'} at ${signer.consentAcceptedAt || 'not recorded'}`, {
+      x: 46, y: curY - 52, size: 7, font: fontSans, color: rgb(0.4, 0.45, 0.5),
+    });
+    certPage.drawText(`Reviewed SHA-256: ${signer.reviewedDocumentHash || 'not recorded'}`, {
+      x: 46, y: curY - 62, size: 7, font: fontSans, color: rgb(0.4, 0.45, 0.5),
+    });
+
+    curY -= 78;
   }
 
   // Footer Disclaimer & Legal Validity
@@ -276,9 +353,14 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
 
   const stampedPdfBytes = await pdfDoc.save();
   const completedHash = createHash('sha256').update(stampedPdfBytes).digest('hex');
+  const certificate = await PDFDocument.create();
+  const [certificatePage] = await certificate.copyPages(pdfDoc, [pdfDoc.getPageCount() - 1]);
+  certificate.addPage(certificatePage);
+  const certificatePdfBytes = await certificate.save();
 
   return {
     stampedPdfBytes,
+    certificatePdfBytes,
     originalHash,
     completedHash,
     pageCount: pdfDoc.getPageCount(),

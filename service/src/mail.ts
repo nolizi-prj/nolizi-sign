@@ -95,7 +95,13 @@ export function mailConfigured(env: MailEnv): boolean {
  */
 export async function sendMail(
   env: MailEnv,
-  msg: { to: string; subject: string; text: string; html?: string },
+  msg: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+    attachments?: Array<{ filename: string; contentType: string; bytes: Uint8Array }>;
+  },
 ): Promise<void> {
   if (!env.GMAIL_SA_KEY || !env.MAIL_IMPERSONATE) {
     throw new Error('mail is not configured (GMAIL_SA_KEY / MAIL_IMPERSONATE)');
@@ -109,7 +115,30 @@ export async function sendMail(
     'MIME-Version: 1.0',
   ];
   let raw: string;
-  if (msg.html) {
+  if (msg.attachments?.length) {
+    const mixed = `=_pumasi_mixed_${crypto.randomUUID().replace(/-/g, '')}`;
+    const alternative = `=_pumasi_alt_${crypto.randomUUID().replace(/-/g, '')}`;
+    const body = msg.html
+      ? [
+          `Content-Type: multipart/alternative; boundary="${alternative}"`, '',
+          `--${alternative}`, 'Content-Type: text/plain; charset=utf-8', '', msg.text,
+          `--${alternative}`, 'Content-Type: text/html; charset=utf-8', '', msg.html,
+          `--${alternative}--`,
+        ]
+      : ['Content-Type: text/plain; charset=utf-8', '', msg.text];
+    const attachmentParts = msg.attachments.flatMap((attachment) => [
+      `--${mixed}`,
+      `Content-Type: ${attachment.contentType}; name="${attachment.filename.replace(/["\r\n]/g, '_')}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${attachment.filename.replace(/["\r\n]/g, '_')}"`,
+      '',
+      b64(attachment.bytes).replace(/.{1,76}/g, '$&\r\n').trimEnd(),
+    ]);
+    raw = [
+      ...headers, `Content-Type: multipart/mixed; boundary="${mixed}"`, '',
+      `--${mixed}`, ...body, ...attachmentParts, `--${mixed}--`,
+    ].join('\r\n');
+  } else if (msg.html) {
     const boundary = `=_pumasi_${crypto.randomUUID().replace(/-/g, '')}`;
     raw = [
       ...headers,

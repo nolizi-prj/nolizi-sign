@@ -71,13 +71,13 @@ test('A-300 the harness constructs the real Durable Object: whole schema, migrat
 
   // Every table durable.ts's initSchema declares.
   for (const expected of [
-    'audit_events', 'auth_codes', 'org_branding', 'recipients', 'sessions',
-    'signatures', 'signer_sessions', 'submission_fields', 'submissions',
-    'submitters', 'templates', 'users',
+    'archive_recipients', 'attachments', 'audit_events', 'auth_codes', 'org_branding', 'rate_limit_events', 'recipients', 'sessions',
+    'signatures', 'signer_consents', 'signer_sessions', 'submission_documents', 'submission_fields', 'submissions',
+    'submitters', 'team_members', 'template_shares', 'templates', 'users',
   ]) {
     assert.ok(tables.includes(expected), `initSchema did not create ${expected}; got ${tables.join(',')}`);
   }
-  assert.equal(tables.length, 12, 'the schema is no longer twelve tables — spec/0004 A-300 must be re-read');
+  assert.equal(tables.length, 19, 'the schema is no longer nineteen tables — A-300 must be re-read');
 
   // The ALTER TABLE migration loop (durable.ts:254) ran too, not just the CREATEs.
   const submitterCols = (h.db.prepare(
@@ -302,14 +302,8 @@ test('A-308 cookie attributes, sessions that are neither rotated nor reaped, and
   // WHAT THIS LAST BLOCK ASSERTS AND WHAT IT DOES NOT.
   //
   // The worker reports is_admin/can_send true and is_external false for every
-  // session holder — literals in the response (durable.ts:823), not columns;
-  // the `users` table has none of the three. Within the worker's model that is
-  // coherent: every verified email owns its own workspace, and the "directory"
-  // users under it are recipients (is_external true, can_send false).
-  // backend/ implements a different model — one organisation, a domain gate,
-  // and an admin-revocable can_send. Which model is Pumasi Sign is Q-018, open
-  // and the steward's. Recorded, not endorsed: if Q-018 is answered the other
-  // way, THIS GOING RED IS THE CORRECT OUTCOME. spec/0004 §S4a.
+  // A standalone verified account owns its workspace. Membership can later
+  // replace role/admin capability without changing the user's identity.
   const me = await h.fetch('/api/auth/me', { cookie: `sign_session=${newer}` });
   assert.equal(me.status, 200);
   assert.deepEqual(
@@ -321,6 +315,8 @@ test('A-308 cookie attributes, sessions that are neither rotated nor reaped, and
       is_admin: true,
       is_external: false,
       can_send: true,
+      role: 'owner',
+      provider: 'email',
     },
   );
 });

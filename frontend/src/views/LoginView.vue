@@ -145,7 +145,7 @@ function resetToEmail() {
 
         <div class="d-flex align-center my-4">
           <v-divider />
-          <span class="px-3 text-caption text-medium-emphasis">or continue with email</span>
+          <span class="px-3 text-caption text-medium-emphasis text-no-wrap">or continue with email</span>
           <v-divider />
         </div>
 

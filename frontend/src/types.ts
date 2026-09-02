@@ -13,6 +13,8 @@ export interface User {
   is_admin: boolean;
   is_external: boolean;
   can_send: boolean;
+  role?: "owner" | "admin" | "member";
+  provider?: "email" | "google" | "microsoft" | string;
 }
 
 export type FieldType =
@@ -77,8 +79,12 @@ export interface TemplateOut {
   /** Ordered signer-role list; may include roles that have no fields yet. */
   roles: string[];
   created_at: string;
-  /** Visible and sendable (read-only) to every sender when true. */
+  /** Set only while this owner-controlled template is in the archive. */
+  archived_at: string | null;
+  /** Owner has one or more explicit shares, or viewer received an explicit share. */
   shared: boolean;
+  /** Owners may edit; explicitly invited recipients may only use the template. */
+  access: "owner" | "use";
   /** The template's creator — labels shared templates and gates edit actions client-side. */
   owner: UserBrief;
 }
@@ -208,6 +214,7 @@ export interface SignerViewOut {
   saved_signature_id: number | null;
   /** role -> that submitter's display name, one entry per submitter on this submission. */
   role_names: Record<string, string>;
+  disclosure: { version: string; text: string };
   /** The signer's display name (rendered into `name` fields). */
   my_name: string;
 }

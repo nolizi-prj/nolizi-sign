@@ -14,17 +14,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
-import { useBrandingStore } from "../store/branding";
 import { useUiStore } from "../store/ui";
 import { displayRole, formatDate } from "../utils/labels";
 import { actionRequired } from "../utils/envelopes";
 import { useDraftHandoffStore } from "../store/draftHandoff";
-import { UPLOAD_ACCEPT } from "../utils/uploads";
+import { validateSourceFiles } from "../utils/uploads";
 import EnvelopeBrowser from "../components/EnvelopeBrowser.vue";
 import type { SubmissionOut, TemplateOut } from "../types";
 
 const auth = useAuthStore();
-const branding = useBrandingStore();
 const ui = useUiStore();
 const draftHandoff = useDraftHandoffStore();
 const router = useRouter();
@@ -54,10 +52,9 @@ function onHeroFileChosen(e: Event): void {
 }
 
 function processSelectedFile(file: File): void {
-  const ext = "." + file.name.split(".").pop()?.toLowerCase();
-  const allowed = UPLOAD_ACCEPT.split(",");
-  if (!allowed.includes(ext)) {
-    ui.toast("Unsupported file format. Please choose a PDF, Office document, or image.");
+  const validationError = validateSourceFiles([file]);
+  if (validationError) {
+    ui.toast(validationError, "error");
     return;
   }
   draftHandoff.setFile(file);
@@ -75,6 +72,11 @@ const templates = ref<TemplateOut[]>([]);
 // pending, I'm a signer (not CC), it's my turn, and I haven't archived it —
 // so the cards, the greeting count, and the sidebar badge always agree.
 const waitingForSignature = computed(() => signList.value.filter(actionRequired));
+const draftCount = computed(() => sentList.value.filter((item) => item.status === "draft").length);
+const inProgressCount = computed(() => sentList.value.filter((item) => item.status === "pending").length);
+const completedCount = computed(() => new Set(
+  [...signList.value, ...sentList.value].filter((item) => item.status === "completed").map((item) => item.id),
+).size);
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -267,26 +269,15 @@ async function confirmDeleteDraft(): Promise<void> {
 
     <v-progress-linear v-if="loading" indeterminate class="mb-4" />
 
-    <!-- Hero band: greeting, queue summary, and the three quick actions
-         (DocuSign-style home; see docs/ux/incumbent-ux-spec.md §2) -->
-    <v-sheet
-      class="hero mb-4 mt-2 pa-6"
-      rounded="lg"
-      :style="{ backgroundColor: branding.primaryColor || '#1A56DB' }"
-    >
-      <h1 class="text-h5">{{ greeting }}{{ firstName ? `, ${firstName}` : "" }}</h1>
-      <p class="hero-subtitle mb-0">{{ queueSubtitle }}</p>
-      <div v-if="auth.canSend" class="hero-actions mt-4">
+    <section class="home-intro mt-2 mb-5">
+      <div>
+        <p class="home-eyebrow mb-1">Your workspace</p>
+        <h1>{{ greeting }}{{ firstName ? `, ${firstName}` : "" }}</h1>
+        <p class="home-subtitle mb-0">{{ queueSubtitle }}</p>
+      </div>
+      <div v-if="auth.canSend" class="hero-actions">
         <v-btn class="hero-btn" variant="flat" prepend-icon="mdi-send" :to="{ name: 'send' }">
           Get signatures
-        </v-btn>
-        <v-btn
-          class="hero-btn"
-          variant="outlined"
-          prepend-icon="mdi-draw-pen"
-          :to="{ name: 'send', query: { self: '1' } }"
-        >
-          Sign a document
         </v-btn>
         <v-btn
           class="hero-btn"
@@ -297,11 +288,19 @@ async function confirmDeleteDraft(): Promise<void> {
           Create a template
         </v-btn>
       </div>
+    </section>
 
-      <!-- DocuSign-Style Drag & Drop Hero Zone -->
+    <v-row class="summary-grid mb-3">
+      <v-col cols="6" sm="3"><v-card variant="flat" border class="summary-card"><v-icon icon="mdi-draw-pen" color="warning" /><div><strong>{{ waitingForSignature.length }}</strong><span>Need your action</span></div></v-card></v-col>
+      <v-col cols="6" sm="3"><v-card variant="flat" border class="summary-card"><v-icon icon="mdi-file-edit-outline" color="secondary" /><div><strong>{{ draftCount }}</strong><span>Drafts</span></div></v-card></v-col>
+      <v-col cols="6" sm="3"><v-card variant="flat" border class="summary-card"><v-icon icon="mdi-progress-clock" color="primary" /><div><strong>{{ inProgressCount }}</strong><span>In progress</span></div></v-card></v-col>
+      <v-col cols="6" sm="3"><v-card variant="flat" border class="summary-card"><v-icon icon="mdi-check-circle-outline" color="success" /><div><strong>{{ completedCount }}</strong><span>Completed</span></div></v-card></v-col>
+    </v-row>
+
+    <v-card v-if="auth.canSend" variant="flat" border class="start-card mb-5">
+      <div class="start-card-copy"><v-icon icon="mdi-file-send-outline" color="primary" size="30" /><div><strong>Start with a document</strong><span>Upload several files now—you can reorder them before sending.</span></div></div>
       <div
-        v-if="auth.canSend"
-        class="hero-dropzone mt-4"
+        class="hero-dropzone"
         :class="{ 'dropzone-active': isDragging }"
         @dragover.prevent="isDragging = true"
         @dragleave.prevent="isDragging = false"
@@ -311,19 +310,18 @@ async function confirmDeleteDraft(): Promise<void> {
         <input
           ref="heroFileInputRef"
           type="file"
-          :accept="UPLOAD_ACCEPT"
           style="display: none;"
           @change="onHeroFileChosen"
         />
         <div class="d-flex align-center justify-center ga-3">
-          <v-icon icon="mdi-cloud-upload-outline" size="28" class="dropzone-icon" />
+          <v-icon icon="mdi-cloud-upload-outline" size="25" class="dropzone-icon" />
           <div class="text-left">
-            <span class="font-weight-bold d-block text-body-2">Drop your document here to start signing</span>
-            <span class="text-caption opacity-80">Supports PDF, DOCX, DOC files (or click to browse)</span>
+            <span class="font-weight-bold d-block text-body-2">Drop files here or browse</span>
+            <span class="text-caption">PDF, Office, OpenDocument, text, and images</span>
           </div>
         </div>
       </div>
-    </v-sheet>
+    </v-card>
 
     <v-row v-if="waitingForSignature.length > 0" class="mb-2 mt-1">
       <v-col v-for="submission in waitingForSignature" :key="submission.id" cols="12" md="6">
@@ -444,57 +442,59 @@ async function confirmDeleteDraft(): Promise<void> {
 
 <style scoped>
 .dashboard {
-  max-width: 1400px;
+  max-width: 1440px;
+  padding: 28px 30px 48px;
 }
 
-/* The hero sits on the branding accent color, so its text is always white;
-   the primary action is white-on-accent, secondaries are outlined white. */
-.hero {
-  color: #ffffff;
-}
+.home-intro { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+.home-intro h1 { font-size: clamp(25px, 3vw, 34px); line-height: 1.18; letter-spacing: -.025em; margin: 0 0 5px; }
+.home-eyebrow { color: rgb(var(--v-theme-primary)); font-size: 12px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.home-subtitle { color: var(--muted); }
+.summary-grid { margin-left: -6px; margin-right: -6px; }
+.summary-grid > :deep(.v-col) { padding: 6px; }
+.summary-card { min-height: 88px; padding: 17px 18px; display: flex; align-items: center; gap: 14px; border-color: #e5e9ef; }
+.summary-card strong, .summary-card span { display: block; }
+.summary-card strong { font-size: 23px; line-height: 1.1; }
+.summary-card span { margin-top: 3px; color: var(--muted); font-size: 13px; }
+.start-card { padding: 18px; display: flex; align-items: center; gap: 24px; border-color: #dce3eb; }
+.start-card-copy { min-width: 280px; display: flex; align-items: center; gap: 13px; }
+.start-card-copy strong, .start-card-copy span { display: block; }
+.start-card-copy span { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.hero-btn.v-btn--variant-flat { background: rgb(var(--v-theme-primary)); color: #fff; }
+.hero-btn.v-btn--variant-outlined { background: #fff; }
 
-.hero-subtitle {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.hero-btn {
-  color: #ffffff;
-}
-
-.hero-btn.v-btn--variant-flat {
-  background-color: #ffffff;
-  color: rgba(0, 0, 0, 0.87);
+.hero-dropzone {
+  flex: 1;
+  border: 1.5px dashed #9aabc0;
+  border-radius: 9px;
+  padding: 13px 18px;
+  background: #f8fbff;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+  user-select: none;
 }
 
 .queue-card {
   border-color: rgba(180, 83, 9, 0.4);
 }
 
-.hero-dropzone {
-  border: 2px dashed rgba(255, 255, 255, 0.45);
-  border-radius: 8px;
-  padding: 14px 20px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
 .hero-dropzone:hover,
 .dropzone-active {
-  background: rgba(255, 255, 255, 0.24);
-  border-color: #ffffff;
-  transform: translateY(-1px);
+  background: #eef5ff;
+  border-color: rgb(var(--v-theme-primary));
 }
 
 .dropzone-icon {
-  color: #ffffff;
+  color: rgb(var(--v-theme-primary));
+}
+
+@media (max-width: 800px) {
+  .dashboard { padding: 20px 14px 36px; }
+  .home-intro { align-items: flex-start; flex-direction: column; }
+  .hero-actions { justify-content: flex-start; }
+  .start-card { align-items: stretch; flex-direction: column; gap: 14px; }
+  .start-card-copy { min-width: 0; }
 }
 </style>

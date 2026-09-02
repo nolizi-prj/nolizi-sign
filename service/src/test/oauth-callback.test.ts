@@ -84,8 +84,13 @@ interface Stub {
 function stubTokenEndpoint(reply: () => Response | Promise<Response>): Stub {
   const real = globalThis.fetch;
   const calls: TokenCall[] = [];
+  let userInfo: Record<string, unknown> = {};
   globalThis.fetch = (async (input: any, init: any = {}) => {
     const url = String(typeof input === 'string' ? input : input.url);
+    if (/\/userinfo$/.test(url)) {
+      assert.equal(new Headers(init.headers).get('authorization'), 'Bearer at');
+      return Response.json(userInfo);
+    }
     if (!/\/token$/.test(url)) {
       throw new Error(`the worker fetched an unexpected URL: ${url}`);
     }
@@ -94,7 +99,13 @@ function stubTokenEndpoint(reply: () => Response | Promise<Response>): Stub {
       method: String(init.method ?? 'GET'),
       body: Object.fromEntries(new URLSearchParams(String(init.body ?? ''))),
     });
-    return reply();
+    const response = await reply();
+    try {
+      const token = await response.clone().json() as { id_token?: string };
+      const segment = token.id_token?.split('.')[1] || '';
+      userInfo = JSON.parse(atob(segment.replace(/-/g, '+').replace(/_/g, '/')));
+    } catch { userInfo = {}; }
+    return response;
   }) as typeof fetch;
   return { calls, restore: () => { globalThis.fetch = real; } };
 }
@@ -268,7 +279,7 @@ test('A-501 an id_token with email_verified true establishes a session and retur
 // comment and does not wave it away. If a packet later requires the claim,
 // this case must go red and be amended with that change, NOT worked around.
 
-test('A-502 an id_token that OMITS email_verified is admitted and gets a session — recorded, not endorsed', async () => {
+test('A-502 an identity that omits email_verified is refused', async () => {
   const h = newHarness(GOOGLE);
   const state = await authorize(h, 'google');
 
@@ -285,25 +296,17 @@ test('A-502 an id_token that OMITS email_verified is admitted and gets a session
     stub.restore();
   }
 
-  // Admitted: a redirect that carries a cookie, not a redirect to /login.
   assert.equal(res.status, 302);
-  assert.equal(res.headers.get('location'), '/');
+  assert.equal(res.headers.get('location'), '/login');
   const token = cookieValue(res, 'sign_session');
-  assert.ok(token, 'A-502 measured no admission — re-read spec/0009 §S3 before deleting it');
+  assert.equal(token, undefined);
 
   const state502 = after(h, state);
-  assert.equal(state502.users, 1, 'no account was created for the unverified-claim token');
-  assert.equal(state502.sessions, 1);
+  assert.equal(state502.users, 0);
+  assert.equal(state502.sessions, 0);
   assert.equal(state502.stateRow, undefined, 'the state row was not consumed');
 
-  const user = h.db.prepare(`SELECT email, provider FROM users`).get() as
-    { email: string; provider: string };
-  assert.equal(user.email, 'no-claim@example.com');
-  assert.equal(user.provider, 'google');
-
-  // And it is a working session, not a cookie that fails on first use.
-  const me = await h.fetch('/api/auth/me', { cookie: `sign_session=${token}` });
-  assert.equal(me.status, 200, 'the cookie was set but the session does not authenticate');
+  assert.equal(state502.branding, 0);
 });
 
 // ── A-503 · the claim present and false IS refused ──────────────────────────
@@ -457,7 +460,6 @@ test('A-506 preferred_username signs a Microsoft user in, the display name falls
   // is derived from the local part.
   const stub = stubTokenEndpoint(tokenOk(idToken({
     preferred_username: 'First.Last@pumasi.ai',
-    email_verified: true,
   })));
   let res: Response;
   try {

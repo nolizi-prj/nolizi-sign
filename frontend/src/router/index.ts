@@ -13,6 +13,23 @@ export const router = createRouter({
   routes,
 });
 
+const CHUNK_RELOAD_KEY = "pumasi-sign:chunk-reload";
+
+// A tab left open across a deployment may still reference an old hashed lazy
+// chunk. Refresh once to load the new asset manifest instead of leaving links
+// such as Send or Team & users apparently unresponsive.
+router.onError((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(message)) return;
+  if (sessionStorage.getItem(CHUNK_RELOAD_KEY) === location.href) return;
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, location.href);
+  location.reload();
+});
+
+router.afterEach(() => {
+  sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+});
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 

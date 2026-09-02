@@ -3,6 +3,7 @@
  */
 
 import { PumasiSignService } from './durable.js';
+import { APP_VERSION } from './version.js';
 import { convertOfficeToPdfViaGraph } from './convert/graph.js';
 import { submitFeedbackToGitHub } from './feedback.js';
 
@@ -32,6 +33,32 @@ const SIGN_SERVICE_NAME = 'pumasi-sign-main';
  * lines above the guard. The guard is the protection. spec/0007 §S2c.
  */
 const INTERNAL_PREFIX = '/__internal/';
+
+function operationalLog(level: 'info' | 'error', event: string, details: Record<string, unknown> = {}): void {
+  const entry = JSON.stringify({ timestamp: new Date().toISOString(), level, event, service: 'pumasi-sign', ...details });
+  if (level === 'error') console.error(entry);
+  else console.log(entry);
+}
+
+async function enforceEdgeLimit(req: Request, env: Env, scope: 'feedback' | 'standalone-convert'): Promise<Response | null> {
+  if (!env.SIGN_SERVICE) return Response.json({ error: 'Rate-limit service unavailable' }, { status: 503 });
+  const stub = env.SIGN_SERVICE.get(env.SIGN_SERVICE.idFromName(SIGN_SERVICE_NAME));
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  for (const name of ['cookie', 'cf-connecting-ip', 'x-forwarded-for']) {
+    const value = req.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  const checked = await stub.fetch(new Request(`https://sign.internal${INTERNAL_PREFIX}rate-limit`, {
+    method: 'POST', headers, body: JSON.stringify({ scope }),
+  })).catch(() => null);
+  if (!checked?.ok) return Response.json({ error: 'Rate-limit service unavailable' }, { status: 503 });
+  const result = await checked.json() as { allowed?: boolean; retry_after?: number };
+  if (result.allowed) return null;
+  return Response.json(
+    { error: 'Too many requests. Try again later.' },
+    { status: 429, headers: { 'Retry-After': String(Math.max(1, result.retry_after || 1)) } },
+  );
+}
 
 export interface Env {
   SIGN_SERVICE: DurableObjectNamespace;
@@ -70,16 +97,42 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 1. Health Check
+    // Liveness only proves that the edge Worker can execute. Readiness below
+    // verifies the state and document dependencies required to serve users.
     if (path === '/api/health' || path === '/healthz') {
       return Response.json(
-        { status: 'ok', service: 'pumasi-sign', time: new Date().toISOString() },
+        { status: 'ok', service: 'pumasi-sign', version: APP_VERSION, time: new Date().toISOString() },
         { headers: corsHeaders }
       );
     }
 
+    if (path === '/api/ready' && req.method === 'GET') {
+      const requestId = req.headers.get('cf-ray') || crypto.randomUUID();
+      try {
+        if (!env.SIGN_SERVICE || !env.DOCUMENTS) throw new Error('required binding unavailable');
+        const stub = env.SIGN_SERVICE.get(env.SIGN_SERVICE.idFromName(SIGN_SERVICE_NAME));
+        const state = await stub.fetch(new Request(`https://sign.internal${INTERNAL_PREFIX}ready`));
+        if (!state.ok) throw new Error(`state probe returned ${state.status}`);
+        const body = await state.json() as { ready?: boolean };
+        if (!body.ready) throw new Error('state probe was not ready');
+        await env.DOCUMENTS.list({ limit: 1 });
+        return Response.json({ status: 'ready', service: 'pumasi-sign', version: APP_VERSION }, { headers: corsHeaders });
+      } catch (error) {
+        operationalLog('error', 'readiness.failed', {
+          request_id: requestId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return Response.json(
+          { status: 'unavailable', service: 'pumasi-sign', request_id: requestId },
+          { status: 503, headers: corsHeaders },
+        );
+      }
+    }
+
     // 2. Feedback Submission -> GitHub Issues
     if (path === '/api/feedback' && req.method === 'POST') {
+      const limited = await enforceEdgeLimit(req, env, 'feedback');
+      if (limited) return limited;
       try {
         let payload: any = {};
         const contentType = req.headers.get('content-type') || '';
@@ -90,7 +143,11 @@ export default {
           const formData = await req.formData();
           payload.message = formData.get('message') || '';
           payload.type = formData.get('type') || 'feedback';
-          payload.screenshotBase64 = formData.get('screenshot') || '';
+          payload.attachmentsBase64 = formData.getAll('attachments').filter((value): value is string => typeof value === 'string');
+          const legacyScreenshot = formData.get('screenshot');
+          if (payload.attachmentsBase64.length === 0 && typeof legacyScreenshot === 'string' && legacyScreenshot) {
+            payload.attachmentsBase64 = [legacyScreenshot];
+          }
           payload.userEmail = formData.get('userEmail') || '';
           const contextRaw = formData.get('context');
           if (contextRaw && typeof contextRaw === 'string') {
@@ -100,6 +157,10 @@ export default {
           if (errorsRaw && typeof errorsRaw === 'string') {
             try { payload.errors = JSON.parse(errorsRaw); } catch {}
           }
+        }
+
+        if (Array.isArray(payload.attachmentsBase64) && payload.attachmentsBase64.length > 5) {
+          return Response.json({ ok: false, message: 'You can attach up to 5 images.' }, { status: 400, headers: corsHeaders });
         }
 
         const result = await submitFeedbackToGitHub(payload, {
@@ -115,6 +176,8 @@ export default {
 
     // 3. Office 365 Cloud Document Conversion
     if (path === '/api/convert' && req.method === 'POST') {
+      const limited = await enforceEdgeLimit(req, env, 'standalone-convert');
+      if (limited) return limited;
       if (!env.MS_GRAPH_TENANT_ID || !env.MS_GRAPH_CLIENT_ID || !env.MS_GRAPH_CLIENT_SECRET || !env.MS_GRAPH_DRIVE_ID) {
         return Response.json({ error: 'Office 365 conversion is not configured' }, { status: 501, headers: corsHeaders });
       }

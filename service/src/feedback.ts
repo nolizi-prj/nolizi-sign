@@ -16,6 +16,7 @@ export interface FeedbackSubmission {
   message: string;
   type?: 'bug' | 'enhancement' | 'question' | 'feedback';
   screenshotBase64?: string;
+  attachmentsBase64?: string[];
   context?: Record<string, string | number | boolean | null | undefined>;
   errors?: FeedbackDiagnosticError[];
   userEmail?: string;
@@ -59,16 +60,25 @@ export async function submitFeedbackToGitHub(
     return { ok: false, message: 'Feedback pipeline is not configured — nothing was recorded.' };
   }
 
-  let screenshotUrl: string | null = null;
+  const attachmentUrls: string[] = [];
+  const attachments = submission.attachmentsBase64?.length
+    ? submission.attachmentsBase64
+    : submission.screenshotBase64 ? [submission.screenshotBase64] : [];
 
-  // 1. If screenshot provided, commit attachment to GitHub repository
-  if (submission.screenshotBase64 && submission.screenshotBase64.includes(',')) {
+  if (attachments.length > 5) {
+    return { ok: false, message: 'You can attach up to 5 images.' };
+  }
+
+  // 1. Commit each screenshot to GitHub in order. Uploads are sequential because
+  // concurrent Contents API writes to the same branch can conflict.
+  for (const [index, attachment] of attachments.entries()) {
+    if (!attachment.includes(',')) continue;
     try {
-      const parts = submission.screenshotBase64.split(',');
+      const parts = attachment.split(',', 2);
       const base64Data = parts[1];
-      const isPng = parts[0].includes('png');
-      const ext = isPng ? 'png' : 'jpg';
-      const filename = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-shot-${crypto.randomUUID().slice(0, 6)}.${ext}`;
+      if (base64Data.length > 5_600_000) continue;
+      const ext = parts[0].includes('png') ? 'png' : parts[0].includes('webp') ? 'webp' : 'jpg';
+      const filename = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-shot-${index + 1}-${crypto.randomUUID().slice(0, 6)}.${ext}`;
       const filePath = `.github/feedback-attachments/${filename}`;
 
       const putRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
@@ -87,7 +97,7 @@ export async function submitFeedbackToGitHub(
       });
 
       if (putRes.ok) {
-        screenshotUrl = `https://raw.githubusercontent.com/${repo}/main/${filePath}`;
+        attachmentUrls.push(`https://raw.githubusercontent.com/${repo}/main/${filePath}`);
       }
     } catch (err) {
       console.warn('Could not upload screenshot to GitHub:', err);
@@ -138,8 +148,11 @@ export async function submitFeedbackToGitHub(
     body += `<details>\n<summary><b>Recent Client-Side Runtime Errors (${submission.errors.length})</b></summary>\n\n${errorLines}\n</details>\n\n`;
   }
 
-  if (screenshotUrl) {
-    body += `---\n\n### Attached Screenshot\n\n<details open>\n<summary><b>View Screenshot</b> (<a href="${screenshotUrl}" target="_blank" rel="noopener">Open Full Resolution ↗</a>)</summary>\n\n![Screenshot](${screenshotUrl})\n</details>\n`;
+  if (attachmentUrls.length) {
+    body += `---\n\n### Attached Images (${attachmentUrls.length})\n\n`;
+    for (const [index, url] of attachmentUrls.entries()) {
+      body += `<details${index === 0 ? ' open' : ''}>\n<summary><b>View image ${index + 1}</b> (<a href="${url}" target="_blank" rel="noopener">Open Full Resolution ↗</a>)</summary>\n\n![Feedback image ${index + 1}](${url})\n</details>\n\n`;
+    }
   }
 
   // 3. Create GitHub Issue

@@ -4,7 +4,7 @@
  * list that used to sit at the bottom of the dashboard — same table, same
  * Send / Edit fields / Archive actions, plus New template.
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
 import { useAuthStore } from "../store/auth";
@@ -20,12 +20,15 @@ const route = useRoute();
 const loading = ref(true);
 const errorMessage = ref<string | null>(null);
 const templates = ref<TemplateOut[]>([]);
+const archivedView = ref(false);
 
 async function load(): Promise<void> {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const { data } = await http.get<TemplateOut[]>("/templates");
+    const { data } = await http.get<TemplateOut[]>("/templates", {
+      params: archivedView.value ? { archived: true } : undefined,
+    });
     templates.value = data;
   } catch (err) {
     errorMessage.value = extractError(err);
@@ -58,6 +61,20 @@ async function confirmArchive(): Promise<void> {
   }
 }
 
+async function restoreTemplate(template: TemplateOut): Promise<void> {
+  try {
+    await http.post(`/templates/${template.id}/unarchive`);
+    ui.toast("Template restored.");
+    await load();
+  } catch (err) {
+    errorMessage.value = extractError(err);
+  }
+}
+
+const emptyCopy = computed(() => archivedView.value
+  ? "Archived templates are collected here and can be restored whenever you need them."
+  : "Templates are reusable documents with signature fields — upload a PDF or Word file to create one.");
+
 function goSend(template: TemplateOut): void {
   void router.push({ name: "send", params: { templateId: String(template.id) } });
 }
@@ -69,25 +86,43 @@ function goBuild(template: TemplateOut): void {
 /** Edit/archive/share are owner-or-admin actions; shared templates from
  *  someone else are send-only (the server enforces this regardless). */
 function isMine(template: TemplateOut): boolean {
-  return template.owner.id === auth.me?.id || auth.isAdmin;
+  return template.owner.id === auth.me?.id;
 }
 
-const togglingShareId = ref<number | null>(null);
+interface TemplateShare { email: string; permission: "use"; status: "pending" | "accepted"; created_at: string }
+const shareTarget = ref<TemplateOut | null>(null);
+const shareEmails = ref<string[]>([]);
+const shareRows = ref<TemplateShare[]>([]);
+const loadingShares = ref(false);
+const savingShares = ref(false);
 
-async function toggleShared(template: TemplateOut): Promise<void> {
-  togglingShareId.value = template.id;
+async function openShare(template: TemplateOut): Promise<void> {
+  shareTarget.value = template;
+  loadingShares.value = true;
   try {
-    await http.put(`/templates/${template.id}/sharing`, { shared: !template.shared });
-    ui.toast(
-      template.shared
-        ? "Template unshared — only you can send from it now."
-        : "Template shared — every sender can now send from it.",
-    );
+    const { data } = await http.get<TemplateShare[]>(`/templates/${template.id}/sharing`);
+    shareRows.value = data;
+    shareEmails.value = data.map((share) => share.email);
+  } catch (err) {
+    errorMessage.value = extractError(err);
+    shareTarget.value = null;
+  } finally {
+    loadingShares.value = false;
+  }
+}
+
+async function saveShares(): Promise<void> {
+  if (!shareTarget.value) return;
+  savingShares.value = true;
+  try {
+    await http.put(`/templates/${shareTarget.value.id}/sharing`, { emails: shareEmails.value });
+    ui.toast(shareEmails.value.length ? "Template access updated." : "Template is private again.");
+    shareTarget.value = null;
     await load();
   } catch (err) {
     errorMessage.value = extractError(err);
   } finally {
-    togglingShareId.value = null;
+    savingShares.value = false;
   }
 }
 
@@ -133,14 +168,25 @@ const headers = [
         <v-card-title class="d-flex align-center text-subtitle-1">
           <span>Templates</span>
           <v-spacer />
-          <v-btn color="primary" prepend-icon="mdi-plus" @click="newTemplateDialog = true">New template</v-btn>
+          <v-btn-toggle
+            v-model="archivedView"
+            mandatory
+            density="compact"
+            variant="outlined"
+            class="mr-3"
+            @update:model-value="load"
+          >
+            <v-btn :value="false">Active</v-btn>
+            <v-btn :value="true" prepend-icon="mdi-archive-outline">Archived</v-btn>
+          </v-btn-toggle>
+          <v-btn v-if="!archivedView" color="primary" prepend-icon="mdi-plus" @click="newTemplateDialog = true">New template</v-btn>
         </v-card-title>
         <v-card-text v-if="!loading && templates.length === 0" class="empty-state">
           <v-icon icon="mdi-file-document-plus-outline" size="40" class="mb-2" aria-hidden="true" />
           <p class="mb-2">
-            Templates are reusable documents with signature fields — upload a PDF or Word file to create one.
+            {{ emptyCopy }}
           </p>
-          <v-btn color="primary" variant="tonal" @click="newTemplateDialog = true">
+          <v-btn v-if="!archivedView" color="primary" variant="tonal" @click="newTemplateDialog = true">
             Create your first template
           </v-btn>
         </v-card-text>
@@ -153,23 +199,17 @@ const headers = [
           density="comfortable"
         >
           <template #item.sharing="{ item }">
-            <v-switch
-              v-if="isMine(item)"
-              :model-value="item.shared"
-              :label="item.shared ? 'Shared' : 'Private'"
-              color="primary"
-              density="compact"
-              hide-details
-              :loading="togglingShareId === item.id"
-              :disabled="togglingShareId === item.id"
-              @update:model-value="toggleShared(item)"
-            />
+            <v-chip v-if="isMine(item)" size="small" :color="item.shared ? 'primary' : undefined" variant="tonal">
+              {{ item.shared ? "Shared with specific people" : "Private" }}
+            </v-chip>
             <v-chip v-else size="small" variant="tonal" prepend-icon="mdi-account-outline">
               Shared by {{ item.owner.name }}
             </v-chip>
           </template>
 
           <template #item.actions="{ item }">
+            <v-btn v-if="archivedView" size="small" variant="text" color="primary" prepend-icon="mdi-archive-arrow-up-outline" @click="restoreTemplate(item)">Restore</v-btn>
+            <template v-else>
             <v-btn size="small" variant="text" @click="goSend(item)">Send</v-btn>
             <v-btn
               size="small"
@@ -180,8 +220,10 @@ const headers = [
               Copy
             </v-btn>
             <template v-if="isMine(item)">
+              <v-btn size="small" variant="text" prepend-icon="mdi-share-variant-outline" @click="openShare(item)">Share</v-btn>
               <v-btn size="small" variant="text" @click="goBuild(item)">Edit fields</v-btn>
               <v-btn size="small" variant="text" color="error" @click="archiveTarget = item">Archive</v-btn>
+            </template>
             </template>
           </template>
         </v-data-table>
@@ -199,6 +241,35 @@ const headers = [
           <v-spacer />
           <v-btn variant="text" @click="archiveTarget = null">Back</v-btn>
           <v-btn color="error" :loading="archiving" @click="confirmArchive">Archive</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog :model-value="shareTarget !== null" max-width="560" @update:model-value="(v: boolean) => { if (!v) shareTarget = null }">
+      <v-card v-if="shareTarget">
+        <v-card-title>Share “{{ shareTarget.name }}”</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 text-medium-emphasis mb-4">
+            Only the email addresses below can use this template. They cannot edit or delete the original, and they will not see your envelopes.
+          </p>
+          <v-combobox
+            v-model="shareEmails"
+            label="People to share with"
+            placeholder="name@company.com"
+            multiple chips closable-chips clearable
+            :loading="loadingShares"
+            :counter="50"
+            hint="Type an email address and press Enter. Remove an address to revoke future use."
+            persistent-hint
+          />
+          <v-alert type="info" variant="tonal" density="compact" class="mt-4">
+            People without an account will be invited. Access is bound to the verified email address entered here.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="shareTarget = null">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="savingShares" :disabled="loadingShares" @click="saveShares">Save access</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

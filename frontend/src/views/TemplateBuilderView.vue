@@ -23,9 +23,10 @@ import PdfPage from "../components/PdfPage.vue";
 import PageThumbRail from "../components/PageThumbRail.vue";
 import FieldBox from "../components/FieldBox.vue";
 import FieldPropertiesPanel from "../components/FieldPropertiesPanel.vue";
+import FieldPalette from "../components/FieldPalette.vue";
 import { useFieldPlacement } from "../composables/useFieldPlacement";
 import { roleColor as sharedRoleColor, templateRoles } from "../utils/roleColors";
-import { FIELD_TYPES, type FieldDef, type TemplateOut } from "../types";
+import { type FieldDef, type TemplateOut } from "../types";
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -465,39 +466,12 @@ async function goSend(): Promise<void> {
             </v-card-text>
           </v-card>
 
-          <v-card variant="flat" border>
-            <v-card-title class="text-subtitle-1">Add field</v-card-title>
-            <v-card-text>
-              <v-btn
-                v-for="ft in FIELD_TYPES"
-                :key="ft"
-                block
-                class="mb-2 text-capitalize"
-                :variant="placingType === ft ? 'flat' : 'tonal'"
-                :color="placingType === ft ? 'primary' : undefined"
-                :disabled="!selectedRole && ft !== 'label'"
-                @click="togglePlacing(ft)"
-              >
-                {{ ft }}
-              </v-btn>
-              <p v-if="placingType" class="text-caption text-medium-emphasis">
-                Click and drag on the page to place a {{ placingType }} field.
-              </p>
-              <p v-else-if="template.fields.length === 0" class="text-caption text-medium-emphasis">
-                Pick a field type, then click and drag on the page to place it.
-              </p>
-            </v-card-text>
-          </v-card>
-
-          <FieldPropertiesPanel
-            v-if="selectedField"
-            class="mt-4"
-            :field="selectedField"
-            :owner-label="selectedField.role"
-            :color="selectedField.type === 'label' ? '#616161' : roleColor(selectedField.role)"
-            @update:field="updateField"
-            @delete="deleteField"
+          <FieldPalette
+            :active-type="placingType"
+            :disable-signer-fields="!selectedRole"
+            @select="togglePlacing"
           />
+
         </v-col>
 
         <v-col cols="12" md="9">
@@ -541,6 +515,22 @@ async function goSend(): Promise<void> {
                   />
                 </div>
               </PdfPage>
+            </div>
+
+            <div class="props-col">
+              <FieldPropertiesPanel
+                v-if="selectedField"
+                :field="selectedField"
+                :owner-label="selectedField.role"
+                :color="selectedField.type === 'label' ? '#616161' : roleColor(selectedField.role)"
+                @update:field="updateField"
+                @delete="deleteField"
+              />
+              <v-card v-else variant="flat" border>
+                <v-card-text class="text-caption text-medium-emphasis">
+                  Select a field on the page to edit its properties — required, font size, prefill text.
+                </v-card-text>
+              </v-card>
             </div>
           </div>
         </v-col>
@@ -602,6 +592,12 @@ async function goSend(): Promise<void> {
 
 .builder-canvas {
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.props-col {
+  width: 250px;
+  flex: none;
 }
 
 .min-width-0 {

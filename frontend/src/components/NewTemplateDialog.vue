@@ -9,7 +9,6 @@
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import http, { extractError } from "../utils/http";
-import { UPLOAD_ACCEPT } from "../utils/uploads";
 import type { TemplateOut } from "../types";
 
 const open = defineModel<boolean>({ required: true });
@@ -66,7 +65,6 @@ async function create(): Promise<void> {
         <v-file-input
           v-model="file"
           label="Document"
-          :accept="UPLOAD_ACCEPT"
           prepend-icon="mdi-file-upload"
         />
       </v-card-text>

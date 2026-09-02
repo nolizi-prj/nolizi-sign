@@ -544,16 +544,7 @@ function openReview(): void {
   }
   consentGiven.value = false;
   reviewOpen.value = true;
-}
-
-function reviewValueText(field: FieldDef): string {
-  if (field.type === "date") return (fieldValues[field.id] as string | undefined) ?? "—";
-  if (field.type === "checkbox") return fieldValues[field.id] === true ? "Checked" : "Not checked";
-  if (field.type === "text" || field.type === "name" || field.type === "dropdown" || field.type === "radio") {
-    return (fieldValues[field.id] as string | undefined)?.trim() || "—";
-  }
-  if (field.type === "attachment") return fieldAttachments[field.id]?.filename ?? "—";
-  return "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function buildValues(): Record<string, unknown> {
@@ -594,7 +585,11 @@ async function finish(): Promise<void> {
   try {
     await http.post(
       `/sign/${props.submitterId}/complete`,
-      { values: buildValues() },
+      {
+        values: buildValues(),
+        consent_accepted: true,
+        consent_version: view.value?.disclosure.version,
+      },
       { skipAuthRedirect: props.external === true },
     );
     reviewOpen.value = false;
@@ -663,7 +658,7 @@ async function decline(): Promise<void> {
 </script>
 
 <template>
-  <v-container fluid class="sign-view">
+  <v-container fluid class="sign-view" :class="{ 'final-preview': reviewOpen }">
     <v-progress-linear v-if="phase === 'loading'" indeterminate class="mb-4" />
 
     <v-alert v-if="phase === 'error'" type="error">{{ errorMessage }}</v-alert>
@@ -737,6 +732,15 @@ async function decline(): Promise<void> {
     </v-card>
 
     <template v-else-if="phase === 'signing' && view">
+      <v-alert
+        v-if="reviewOpen"
+        type="info"
+        variant="tonal"
+        icon="mdi-eye-check-outline"
+        class="preview-banner mb-4"
+      >
+        <strong>Final document preview</strong> — review every page as it will appear before you agree and sign.
+      </v-alert>
       <div class="sign-header mb-3">
         <div class="d-flex align-center flex-wrap">
           <div class="mr-4">
@@ -774,7 +778,7 @@ async function decline(): Promise<void> {
       </v-alert>
 
       <!-- Floating DocuSign-Style Guided Tag -->
-      <div v-if="tourFields.length > 0" class="pf-guided-tag-wrapper">
+      <div v-if="tourFields.length > 0 && !reviewOpen" class="pf-guided-tag-wrapper">
         <button
           type="button"
           class="pf-guided-tag"
@@ -804,7 +808,7 @@ async function decline(): Promise<void> {
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="mr-1">
               <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
             </svg>
-            <span>REVIEW & FINISH</span>
+            <span>PREVIEW & FINISH</span>
           </template>
         </button>
       </div>
@@ -863,6 +867,7 @@ async function decline(): Promise<void> {
               v-if="field.type === 'signature' || field.type === 'initials'"
               type="button"
               class="signature-slot"
+              :disabled="reviewOpen"
               :aria-label="`${signatureImageUrls[field.id] ? `Your ${field.type}` : field.type === 'initials' ? 'Click to initial' : 'Click to sign'} — ${fieldAriaLabel(field)}`"
               @click="openSignaturePad(field.id, field.type === 'initials')"
             >
@@ -879,6 +884,7 @@ async function decline(): Promise<void> {
               v-model="fieldValues[field.id] as string"
               type="text"
               class="plain-input"
+              :disabled="reviewOpen"
               :style="fieldTextStyle(field, page)"
               :aria-label="fieldAriaLabel(field)"
               :title="editHint(field)"
@@ -890,6 +896,7 @@ async function decline(): Promise<void> {
               v-model="fieldValues[field.id] as string"
               type="date"
               class="plain-input"
+              :disabled="reviewOpen"
               :style="fieldTextStyle(field, page)"
               :aria-label="fieldAriaLabel(field)"
               :title="editHint(field)"
@@ -901,6 +908,7 @@ async function decline(): Promise<void> {
               v-model="fieldValues[field.id] as unknown as boolean"
               type="checkbox"
               class="checkbox-input"
+              :disabled="reviewOpen"
               :aria-label="fieldAriaLabel(field)"
               @focus="setCurrentField(field.id)"
             />
@@ -910,6 +918,7 @@ async function decline(): Promise<void> {
               v-model="fieldValues[field.id] as string"
               type="text"
               class="plain-input"
+              :disabled="reviewOpen"
               :class="{ 'input-invalid': !textValid(field) }"
               :style="fieldTextStyle(field, page)"
               :aria-label="fieldAriaLabel(field)"
@@ -922,6 +931,7 @@ async function decline(): Promise<void> {
               v-else-if="field.type === 'dropdown' || field.type === 'radio'"
               v-model="fieldValues[field.id] as string"
               class="plain-input choice-input"
+              :disabled="reviewOpen"
               :style="fieldTextStyle(field, page)"
               :aria-label="fieldAriaLabel(field)"
               :title="editHint(field)"
@@ -937,7 +947,7 @@ async function decline(): Promise<void> {
               v-else-if="field.type === 'attachment'"
               type="button"
               class="signature-slot attachment-slot"
-              :disabled="uploadingAttachment"
+              :disabled="uploadingAttachment || reviewOpen"
               :aria-label="`${fieldAttachments[field.id] ? `Attached: ${fieldAttachments[field.id].filename}` : 'Attach file'} — ${fieldAriaLabel(field)}`"
               :title="editHint(field)"
               @click="openAttachmentPicker(field.id)"
@@ -962,7 +972,21 @@ async function decline(): Promise<void> {
 
       <!-- Guided dock -->
       <v-card class="finish-bar" elevation="8">
-        <v-card-text class="d-flex align-center py-3 dock-row">
+        <v-card-text v-if="reviewOpen" class="d-flex align-center py-3 dock-row preview-actions">
+          <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="reviewOpen = false">Back to editing</v-btn>
+          <v-checkbox
+            v-model="consentGiven"
+            density="compact"
+            hide-details
+            class="consent-check"
+            :label="view?.disclosure.text ?? 'I agree to use electronic records and signatures for this envelope.'"
+          />
+          <v-spacer />
+          <v-btn color="primary" variant="flat" :disabled="!consentGiven" :loading="finishing" @click="finish">
+            Sign &amp; finish
+          </v-btn>
+        </v-card-text>
+        <v-card-text v-else class="d-flex align-center py-3 dock-row">
           <v-btn
             variant="text"
             icon="mdi-chevron-up"
@@ -996,8 +1020,8 @@ async function decline(): Promise<void> {
             Next
           </v-btn>
           <v-btn variant="text" color="error" class="mr-2" @click="declineOpen = true">Decline</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!canFinish" @click="openReview">
-            Finish
+          <v-btn color="primary" variant="flat" :disabled="!canFinish" prepend-icon="mdi-eye-outline" @click="openReview">
+            Preview &amp; finish
           </v-btn>
         </v-card-text>
       </v-card>
@@ -1010,53 +1034,6 @@ async function decline(): Promise<void> {
         @save="handleSaveSignature"
         @use-saved="handleUseSaved"
       />
-
-      <!-- Review & consent -->
-      <v-dialog v-model="reviewOpen" max-width="560">
-        <v-card>
-          <v-card-title>Review before signing</v-card-title>
-          <v-card-text>
-            <v-list density="compact" class="review-list mb-2">
-              <v-list-item v-for="field in tourFields" :key="field.id">
-                <template #prepend>
-                  <v-icon
-                    :icon="fieldComplete(field) ? 'mdi-check-circle' : 'mdi-circle-outline'"
-                    :color="fieldComplete(field) ? 'success' : 'grey'"
-                    size="small"
-                  />
-                </template>
-                <v-list-item-title class="text-body-2">
-                  {{ FIELD_TYPE_LABELS[field.type] }} · page {{ field.page + 1 }}
-                </v-list-item-title>
-                <template #append>
-                  <img
-                    v-if="(field.type === 'signature' || field.type === 'initials') && signatureImageUrls[field.id]"
-                    :src="signatureImageUrls[field.id]"
-                    :alt="field.type === 'initials' ? 'Initials preview' : 'Signature preview'"
-                    class="review-signature"
-                  />
-                  <span v-else class="text-body-2 text-medium-emphasis review-value">
-                    {{ reviewValueText(field) }}
-                  </span>
-                </template>
-              </v-list-item>
-            </v-list>
-            <v-checkbox
-              v-model="consentGiven"
-              density="compact"
-              hide-details
-              label="I agree that my electronic signature on this document is legally binding, the same as my handwritten signature."
-            />
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn variant="text" @click="reviewOpen = false">Keep editing</v-btn>
-            <v-btn color="primary" variant="flat" :disabled="!consentGiven" :loading="finishing" @click="finish">
-              Sign &amp; finish
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
 
       <!-- Decline -->
       <v-dialog v-model="declineOpen" max-width="480">
@@ -1097,6 +1074,46 @@ async function decline(): Promise<void> {
   margin-left: auto;
   margin-right: auto;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.preview-banner {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.final-preview .my-field {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+.final-preview .other-field,
+.final-preview .field-check {
+  display: none;
+}
+
+.final-preview .plain-input,
+.final-preview .signature-slot,
+.final-preview .choice-input {
+  appearance: none;
+  background: transparent !important;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.final-preview .checkbox-input {
+  pointer-events: none;
+  opacity: 1;
+}
+
+.preview-actions {
+  gap: 12px;
+}
+
+.consent-check {
+  flex: 1 1 420px;
 }
 
 .label-field {
@@ -1251,25 +1268,6 @@ async function decline(): Promise<void> {
 
 .dock-info {
   min-width: 0;
-}
-
-.review-list {
-  max-height: 260px;
-  overflow-y: auto;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-}
-
-.review-signature {
-  max-height: 28px;
-  max-width: 120px;
-}
-
-.review-value {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Floating Guided Tag */

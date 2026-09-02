@@ -6,6 +6,7 @@
 import { onMounted, ref, watch } from "vue";
 import { useBrandingStore } from "../store/branding";
 import { useUiStore } from "../store/ui";
+import LogoCropDialog from "../components/LogoCropDialog.vue";
 
 const branding = useBrandingStore();
 const ui = useUiStore();
@@ -15,6 +16,8 @@ const logoDataUrl = ref<string | null>(branding.logoDataUrl);
 const primaryColor = ref(branding.primaryColor);
 const welcomeMessage = ref(branding.welcomeMessage);
 const saving = ref(false);
+const cropOpen = ref(false);
+const selectedLogoFile = ref<File | null>(null);
 
 const COLOR_PRESETS = [
   { name: "Pumasi Indigo", hex: "#1A56DB" },
@@ -44,14 +47,17 @@ function onLogoSelected(event: Event) {
 
   if (file.size > 2 * 1024 * 1024) {
     ui.toast("Logo file should be under 2 MB.");
+    target.value = "";
     return;
   }
+  selectedLogoFile.value = file;
+  cropOpen.value = true;
+  target.value = "";
+}
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    logoDataUrl.value = reader.result as string;
-  };
-  reader.readAsDataURL(file);
+function useCroppedLogo(dataUrl: string) {
+  logoDataUrl.value = dataUrl;
+  selectedLogoFile.value = null;
 }
 
 function removeLogo() {
@@ -117,9 +123,10 @@ async function save() {
                 Remove Logo
               </v-btn>
             </div>
-            <div v-else class="mb-3">
+            <div class="mb-3">
               <input type="file" accept="image/png,image/jpeg,image/webp" @change="onLogoSelected" class="d-block" />
-              <span class="text-caption text-medium-emphasis">PNG, JPEG, or WebP up to 2 MB.</span>
+              <span class="text-caption text-medium-emphasis d-block mt-1">Recommended output: 600 × 180 px (10:3). PNG, JPEG, or WebP up to 2 MB.</span>
+              <span class="text-caption text-medium-emphasis">After choosing an image, resize and crop it before saving.</span>
             </div>
           </div>
 
@@ -180,7 +187,7 @@ async function save() {
                 style="height: 36px; max-width: 140px; object-fit: contain;"
                 class="mr-3"
               />
-              <span class="text-h6 font-weight-bold" :style="{ color: primaryColor }">{{ companyName || 'Pumasi Sign' }}</span>
+              <span class="text-h6 font-weight-bold">{{ companyName || 'Pumasi Sign' }}</span>
             </div>
 
             <!-- Recipient Banner -->
@@ -221,4 +228,5 @@ async function save() {
       </v-col>
     </v-row>
   </v-container>
+  <LogoCropDialog v-model="cropOpen" :file="selectedLogoFile" @cropped="useCroppedLogo" />
 </template>

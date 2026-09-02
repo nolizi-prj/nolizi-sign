@@ -75,10 +75,20 @@ pytest                                  # needs local Postgres on :5433, see REA
   (PDF field stamping + audit certificate), `src/storage/r2.ts`,
   `src/convert/graph.ts` (Office → PDF via Microsoft Graph), `src/mail.ts`,
   `src/feedback.ts` (in-app feedback → GitHub issues).
-- **Test coverage here is thin and you should know it before you trust it**:
-  `src/test/` holds two files and both exercise `core/stamping.ts` only. Auth,
-  the Durable Object store, R2 and mail are covered by nothing. Widening that
-  is `roadmap/BACKLOG.md`'s owner's call, not a side errand.
+- **Test coverage here is uneven, and the shape of the unevenness is the thing
+  to know before you trust a green count.** `src/test/` holds **eight**
+  `*.test.ts` files. **Six** of them construct the real Durable Object through
+  `src/test/support/durable-harness.ts` — whole schema, migrations, routing —
+  and drive it through its own `fetch()`: sessions and `establishSession`, the
+  OAuth callback, envelope state transitions, correction, expiry (including
+  `worker.ts`'s `scheduled()`), and `finalize`'s stamping branch end to end
+  including `storage/r2.ts` against an in-memory bucket. The other **two**
+  (`stamping.test.ts`, `stamping-multi-signer.test.ts`) call
+  `core/stamping.ts` directly and assert only the *shape* of what it returns.
+  **Still covered by nothing: `mail.ts` beyond its unconfigured throw,
+  `feedback.ts`, and `convert/graph.ts`** — all three cross a network boundary
+  this suite has no stubs for. Widening that is `roadmap/BACKLOG.md`'s owner's
+  call, not a side errand.
 - Bindings and vars live in `service/wrangler.jsonc`; secrets are set with
   `wrangler secret put`, never committed.
 
