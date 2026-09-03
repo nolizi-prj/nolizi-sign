@@ -415,7 +415,7 @@ test('A-406 signing is in order, is once, and the last outstanding non-CC signer
   const done = h.db.prepare(
     `SELECT actor_email AS e FROM audit_events WHERE submission_id = ? AND event_type = 'completed'`,
   ).get(env.id) as { e: string };
-  assert.equal(done.e, 'system@pumasi.ai');
+  assert.equal(done.e, 'system@nolizi.com');
 
   // THE REPAIR (durable.ts:1452, spec/0006 §S2b). AMENDED 2026-08-31 by
   // spec/0006 §S4. This tail was frozen as RECORDED, NOT ENDORSED against

@@ -9,7 +9,7 @@
 <template>
   <v-container class="legal-page py-10">
     <div class="mx-auto" style="max-width: 720px">
-      <router-link to="/login" class="text-decoration-none text-caption">‹ Pumasi Sign</router-link>
+      <router-link to="/login" class="text-decoration-none text-caption">‹ Nolizi Sign</router-link>
       <h1 class="text-h4 font-weight-bold mt-2 mb-1">Privacy</h1>
       <p class="text-caption text-medium-emphasis mb-6">
         In force for everyone using this service. Version 1.0, effective 2026-08-30.
@@ -24,7 +24,7 @@
         processor acting for the account holder who sent it. They chose to collect your
         signature; we hold it on their behalf. If you signed something and want to talk
         about your data, the sender is the controller, but you may also contact us at
-        admin@pumasi.ai and we will help.
+        admin@nolizi.com and we will help.
       </p>
       <p>
         Operator: <strong>ATX APPLE LLC</strong>, a Texas limited liability company, United
@@ -57,7 +57,7 @@
         The service runs on <strong>Cloudflare</strong> (Workers and R2 storage, encrypted at
         rest); all traffic uses TLS. Email — verification codes, signing invitations,
         completion notices — is delivered through <strong>Google</strong> (Gmail API, as
-        admin@pumasi.ai). If you upload a Word, PowerPoint, or Excel file, it is converted
+        admin@nolizi.com). If you upload a Word, PowerPoint, or Excel file, it is converted
         to PDF through <strong>Microsoft's</strong> conversion service: the file transits a
         OneDrive owned by the operator and is deleted immediately after conversion. Those
         three are the complete list of sub-processors; there are no analytics or advertising
@@ -70,7 +70,7 @@
         signed agreements are records both parties may need for years, so we do not expire
         them on our own. Draft envelopes can be deleted by their sender at any time, which
         also deletes the stored document. To remove an account and everything in it, email
-        admin@pumasi.ai from the account's address.
+        admin@nolizi.com from the account's address.
       </p>
 
       <h2 class="text-h6 mt-6 mb-2">What we never do</h2>
@@ -81,7 +81,7 @@
       </p>
 
       <p class="text-caption text-medium-emphasis mt-8">
-        Questions about anything on this page: admin@pumasi.ai.
+        Questions about anything on this page: admin@nolizi.com.
       </p>
     </div>
   </v-container>

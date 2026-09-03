@@ -212,7 +212,7 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
   // DocuSign placement and lets printed or separated pages be correlated with
   // the certificate. The original PDF remains unchanged in storage; this is
   // applied only while producing the completed artifact.
-  const envelopeIdStamp = `Pumasi Sign Envelope ID: ${opts.envelopeUid}`;
+  const envelopeIdStamp = `Nolizi Sign Envelope ID: ${opts.envelopeUid}`;
   for (const page of pdfDoc.getPages()) {
     const { width, height } = page.getSize();
     const size = Math.min(
@@ -243,7 +243,7 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
     borderWidth: 1,
   });
 
-  certPage.drawText('Pumasi Sign - Signature Certificate and Audit Trail', {
+  certPage.drawText('Nolizi Sign - Signature Certificate and Audit Trail', {
     x: 48,
     y: cHeight - 60,
     size: 14,
@@ -343,7 +343,7 @@ export async function stampAndCertifyPdf(opts: StampingOptions): Promise<Stampin
     color: rgb(0.5, 0.55, 0.6),
   });
 
-  certPage.drawText('Powered by Pumasi Sign (https://sign.pumasi.ai) - Tamper-Evident Cryptographic Audit Record', {
+  certPage.drawText('Powered by Nolizi Sign (https://sign.nolizi.com) - Tamper-Evident Cryptographic Audit Record', {
     x: 36,
     y: 28,
     size: 7.5,

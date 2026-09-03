@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign Feedback Widget + Modal.
+ * Nolizi Sign Feedback Widget + Modal.
  * Captures diagnostics and page preview, supports paste/upload, and submits to GitHub issues.
  * Features both floating screen trigger and optional navbar button.
  */
@@ -95,7 +95,7 @@ function buildContext(): Record<string, string | number | boolean | null | undef
   const nav = navigator as any;
   return {
     Page: route.fullPath,
-    Version: `Pumasi Sign v${APP_VERSION}`,
+    Version: `Nolizi Sign v${APP_VERSION}`,
     Build: APP_COMMIT,
     Environment: APP_ENVIRONMENT,
     BuildTime: APP_BUILD_TIME,
@@ -125,7 +125,7 @@ function drawFallbackCanvas(): File | null {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#101828";
     ctx.font = "bold 16px sans-serif";
-    ctx.fillText("Pumasi Sign Session Snapshot", 24, 45);
+    ctx.fillText("Nolizi Sign Session Snapshot", 24, 45);
     ctx.font = "14px sans-serif";
     ctx.fillText("URL: " + location.href, 24, 80);
     ctx.fillText("Time: " + new Date().toLocaleString(), 24, 110);

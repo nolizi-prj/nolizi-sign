@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign — Public Standalone Marketing Landing Page
+ * Nolizi Sign — Public Standalone Marketing Landing Page
  *
  * Designed to communicate value, transparent limitations, and the stage
  * `roadmap/STAGE.md` records, to unauthenticated visitors with direct
@@ -40,20 +40,20 @@ function goToSignIn() {
     <!-- Top Announcement Banner: Stage & Transparency -->
     <div class="stage-banner bg-slate-900 text-white py-2 px-4 text-center text-caption d-flex align-center justify-center gap-2">
       <v-chip size="x-small" color="primary" variant="flat" class="font-weight-bold uppercase" data-testid="stage-badge">{{ STAGE_BADGE }}</v-chip>
-      <span>Pumasi Sign is in active {{ STAGE_LABEL }} — Unmetered PDF stamping &amp; SHA-256 audit certificates under Apache-2.0.</span>
+      <span>Nolizi Sign is in active {{ STAGE_LABEL }} — Unmetered PDF stamping &amp; SHA-256 audit certificates under Apache-2.0.</span>
     </div>
 
     <!-- Navigation Header -->
     <v-container class="py-4 d-flex align-center justify-space-between">
       <div class="d-flex align-center gap-2 cursor-pointer" @click="router.push('/')">
-        <img src="/logo-mark.png" alt="Pumasi Sign" style="height: 36px; width: 36px;" />
-        <span class="text-h6 font-weight-bold text-slate-900">Pumasi Sign</span>
+        <img src="/logo-mark.png" alt="Nolizi Sign" style="height: 36px; width: 36px;" />
+        <span class="text-h6 font-weight-bold text-slate-900">Nolizi Sign</span>
       </div>
 
       <div class="d-flex align-center gap-3">
         <v-btn
           variant="text"
-          href="https://github.com/pumasi-ai/pumasi-sign"
+          href="https://github.com/nolizi-prj/nolizi-sign"
           target="_blank"
           prepend-icon="mdi-github"
           class="text-none"
@@ -110,7 +110,7 @@ function goToSignIn() {
 
       <!-- Hero Dashboard Preview Screenshot -->
       <v-card max-width="1000" class="mx-auto border rounded-xl shadow-lg overflow-hidden">
-        <v-img src="/screenshots/sign-dashboard.png" alt="Pumasi Sign Interface Preview" cover />
+        <v-img src="/screenshots/sign-dashboard.png" alt="Nolizi Sign Interface Preview" cover />
       </v-card>
     </v-container>
 
@@ -160,14 +160,14 @@ function goToSignIn() {
     <v-container class="py-16">
       <div class="text-center mb-12">
         <h2 class="text-h4 font-weight-bold text-slate-900 mb-3">Honest Comparison vs. Incumbents</h2>
-        <p class="text-body-1 text-medium-emphasis">Why developers and businesses choose Pumasi Sign.</p>
+        <p class="text-body-1 text-medium-emphasis">Why developers and businesses choose Nolizi Sign.</p>
       </div>
 
       <v-table class="border rounded-lg shadow-sm">
         <thead>
           <tr class="bg-slate-50">
             <th class="font-weight-bold text-left py-4">Capability</th>
-            <th class="font-weight-bold text-primary text-center py-4">Pumasi Sign</th>
+            <th class="font-weight-bold text-primary text-center py-4">Nolizi Sign</th>
             <th class="font-weight-bold text-medium-emphasis text-center py-4">DocuSign</th>
             <th class="font-weight-bold text-medium-emphasis text-center py-4">SignWell</th>
           </tr>
@@ -227,7 +227,7 @@ function goToSignIn() {
         and
         <a href="https://www.signwell.com/pricing/" target="_blank" rel="noopener">SignWell</a>.
         The figures as read, with their sources, are recorded in
-        <a href="https://github.com/pumasi-ai/pumasi-sign/blob/main/roadmap/MARKET.md" target="_blank" rel="noopener">roadmap/MARKET.md</a>.
+        <a href="https://github.com/nolizi-prj/nolizi-sign/blob/main/roadmap/MARKET.md" target="_blank" rel="noopener">roadmap/MARKET.md</a>.
         Prices move; the date is part of the claim.
       </p>
 
@@ -246,7 +246,7 @@ function goToSignIn() {
           Create Free Account
         </v-btn>
         <div class="mt-8 text-caption text-slate-400">
-          Part of <a href="https://pumasi.ai" class="text-slate-300">Pumasi</a> • Commons of software built by agents, governed by people.
+          Part of <a href="https://nolizi.com" class="text-slate-300">Nolizi</a> • A connected collection of practical software.
         </div>
       </v-container>
     </footer>

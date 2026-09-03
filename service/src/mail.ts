@@ -106,7 +106,7 @@ export async function sendMail(
   if (!env.GMAIL_SA_KEY || !env.MAIL_IMPERSONATE) {
     throw new Error('mail is not configured (GMAIL_SA_KEY / MAIL_IMPERSONATE)');
   }
-  const fromName = env.MAIL_FROM_NAME || 'Pumasi Sign';
+  const fromName = env.MAIL_FROM_NAME || 'Nolizi Sign';
   const headers = [
     `From: ${fromName} <${env.MAIL_IMPERSONATE}>`,
     `To: ${msg.to}`,

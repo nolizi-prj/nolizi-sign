@@ -8,7 +8,7 @@
 <template>
   <v-container class="legal-page py-10">
     <div class="mx-auto" style="max-width: 720px">
-      <router-link to="/login" class="text-decoration-none text-caption">‹ Pumasi Sign</router-link>
+      <router-link to="/login" class="text-decoration-none text-caption">‹ Nolizi Sign</router-link>
       <h1 class="text-h4 font-weight-bold mt-2 mb-1">Terms of Service</h1>
       <p class="text-caption text-medium-emphasis mb-6">
         In force for everyone using this service. Version 1.0, effective 2026-08-30.
@@ -16,7 +16,7 @@
 
       <h2 class="text-h6 mt-6 mb-2">What this is</h2>
       <p>
-        Pumasi Sign is an electronic-signature service: you upload a document, name who must
+        Nolizi Sign is an electronic-signature service: you upload a document, name who must
         sign, and the service collects their signatures, seals the result, and gives everyone
         the executed copy with a signature certificate. These terms govern its use by account
         holders. People who only sign a document sent to them are covered by the
@@ -73,7 +73,7 @@
       </p>
 
       <p class="text-caption text-medium-emphasis mt-8">
-        Questions: admin@pumasi.ai — that address reaches the people who run the service.
+        Questions: admin@nolizi.com — that address reaches the people who run the service.
       </p>
     </div>
   </v-container>

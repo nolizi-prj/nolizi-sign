@@ -59,7 +59,7 @@ async function logout(): Promise<void> {
       <v-navigation-drawer v-if="mdAndUp" class="workspace-nav" permanent width="244">
         <router-link :to="{ name: 'dashboard' }" class="workspace-brand">
           <span class="brand-mark" :class="{ 'brand-mark-custom': branding.logoDataUrl }" :style="branding.logoDataUrl ? undefined : { backgroundColor: brandColor }"><img :src="branding.logoDataUrl || '/logo-mark-white.png'" alt="" /></span>
-          <span class="brand-copy"><strong>{{ branding.companyName || 'Pumasi Sign' }}</strong><small>eSignature workspace</small></span>
+          <span class="brand-copy"><strong>{{ branding.companyName || 'Nolizi Sign' }}</strong><small>eSignature workspace</small></span>
         </router-link>
         <div class="px-3 pb-3" v-if="auth.canSend"><v-btn block color="primary" size="large" prepend-icon="mdi-plus" :to="{ name: 'send' }">Get signatures</v-btn></div>
         <v-list nav density="comfortable" class="px-2">
@@ -71,7 +71,7 @@ async function logout(): Promise<void> {
             <v-list nav density="compact">
               <v-list-item v-for="item in settingsNav" :key="item.title" :prepend-icon="item.icon" :title="item.title" :to="item.to" color="primary" rounded="lg" />
             </v-list>
-            <p class="app-version px-3 mt-2 mb-0">Pumasi Sign v{{ APP_VERSION }}</p>
+            <p class="app-version px-3 mt-2 mb-0">Nolizi Sign v{{ APP_VERSION }}</p>
           </div>
         </template>
       </v-navigation-drawer>
@@ -79,7 +79,7 @@ async function logout(): Promise<void> {
       <v-navigation-drawer v-model="mobileDrawer" temporary width="280">
         <div class="workspace-brand">
           <span class="brand-mark" :class="{ 'brand-mark-custom': branding.logoDataUrl }" :style="branding.logoDataUrl ? undefined : { backgroundColor: brandColor }"><img :src="branding.logoDataUrl || '/logo-mark-white.png'" alt="" /></span>
-          <span class="brand-copy"><strong>{{ branding.companyName || 'Pumasi Sign' }}</strong><small>eSignature workspace</small></span>
+          <span class="brand-copy"><strong>{{ branding.companyName || 'Nolizi Sign' }}</strong><small>eSignature workspace</small></span>
         </div>
         <div class="px-3 pb-3" v-if="auth.canSend"><v-btn block color="primary" prepend-icon="mdi-plus" :to="{ name: 'send' }">Get signatures</v-btn></div>
         <v-list nav>
@@ -87,7 +87,7 @@ async function logout(): Promise<void> {
           <v-divider class="my-2" />
           <v-list-item v-for="item in settingsNav" :key="item.title" :prepend-icon="item.icon" :title="item.title" :to="item.to" color="primary" />
         </v-list>
-        <p class="app-version px-5 mt-2">Pumasi Sign v{{ APP_VERSION }}</p>
+        <p class="app-version px-5 mt-2">Nolizi Sign v{{ APP_VERSION }}</p>
       </v-navigation-drawer>
 
       <v-app-bar color="surface" elevation="0" border="b" height="64">
@@ -115,14 +115,14 @@ async function logout(): Promise<void> {
     <v-app-bar v-else-if="focusLayout" color="surface" elevation="0" border="b" height="60">
       <router-link :to="auth.me ? { name: 'dashboard' } : { name: 'landing' }" class="focus-brand ml-4">
         <span class="brand-mark brand-mark-small" :class="{ 'brand-mark-custom': branding.logoDataUrl }" :style="branding.logoDataUrl ? undefined : { backgroundColor: brandColor }"><img :src="branding.logoDataUrl || '/logo-mark-white.png'" alt="" /></span>
-        <strong>{{ branding.companyName || 'Pumasi Sign' }}</strong>
+        <strong>{{ branding.companyName || 'Nolizi Sign' }}</strong>
       </router-link>
       <v-spacer /><span class="focus-context d-none d-sm-inline">{{ route.meta.title }}</span>
       <v-btn v-if="auth.me" variant="text" class="mx-2" :to="{ name: 'dashboard' }">Exit</v-btn>
     </v-app-bar>
 
     <v-main :class="{ 'workspace-main': workspaceLayout }"><router-view /></v-main>
-    <p v-if="!workspaceLayout" class="public-app-version">Pumasi Sign v{{ APP_VERSION }}</p>
+    <p v-if="!workspaceLayout" class="public-app-version">Nolizi Sign v{{ APP_VERSION }}</p>
     <FeedbackDialog />
     <v-dialog v-model="helpOpen" max-width="560">
       <v-card>

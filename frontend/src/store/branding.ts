@@ -40,7 +40,7 @@ export function brandThemeTokens(color: string) {
 }
 
 export const useBrandingStore = defineStore('branding', () => {
-  const companyName = ref('Pumasi Sign');
+  const companyName = ref('Nolizi Sign');
   const logoDataUrl = ref<string | null>(null);
   const primaryColor = ref(DEFAULT_PRIMARY);
   const welcomeMessage = ref('Please review and sign this document.');
@@ -77,7 +77,7 @@ export const useBrandingStore = defineStore('branding', () => {
     try {
       const { data } = await http.get<any>('/branding', { skipAuthRedirect: true });
       if (data) {
-        companyName.value = data.company_name || 'Pumasi Sign';
+        companyName.value = data.company_name || 'Nolizi Sign';
         logoDataUrl.value = data.logo_data_url || null;
         primaryColor.value = brandThemeTokens(data.primary_color || DEFAULT_PRIMARY).primary;
         welcomeMessage.value = data.welcome_message || 'Please review and sign this document.';

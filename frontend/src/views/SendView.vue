@@ -1655,8 +1655,8 @@ async function send(asDraft = false): Promise<void> {
               :error="addSignerNameRequired && !addSignerName.trim()"
               :hint="
                 addSignerNameRequired
-                  ? 'This person is outside Pumasi. Their name appears on the signed document and certificate, so enter it exactly.'
-                  : 'Optional for Pumasi accounts.'
+                  ? 'This person is outside Nolizi. Their name appears on the signed document and certificate, so enter it exactly.'
+                  : 'Optional for Nolizi accounts.'
               "
               persistent-hint
               @keyup.enter="confirmAddSigner"

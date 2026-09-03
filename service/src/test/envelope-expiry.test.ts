@@ -141,8 +141,8 @@ test('A-410 the sweep flips a past-deadline pending envelope to expired, writes 
 
   // The actor is the service, not the sender: nobody did this.
   const row = auditRow(h, env.id, 'expired');
-  assert.equal(row.actor_email, 'system@pumasi.ai');
-  assert.equal(row.actor_name, 'Pumasi Sign Engine');
+  assert.equal(row.actor_email, 'system@nolizi.com');
+  assert.equal(row.actor_name, 'Nolizi Sign Engine');
   assert.equal(JSON.parse(row.details_json).expires_at, PAST);
 
   // Nothing is completed, nothing is deleted, no signer is touched.

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign — public authentication (sign in & sign up): Google or
+ * Nolizi Sign — public authentication (sign in & sign up): Google or
  * Microsoft OAuth, or a passwordless 6-digit code emailed to the address.
  */
 import { computed, ref } from "vue";
@@ -91,13 +91,13 @@ function resetToEmail() {
 <template>
   <v-container class="d-flex justify-center pt-12 pb-16">
     <v-card max-width="480" width="100%" class="pa-6 pumasi-card border rounded-lg shadow-sm">
-      <!-- Header with Pumasi Logo -->
+      <!-- Header with Nolizi logo -->
       <div class="text-center pt-2 mb-2">
         <div class="d-flex justify-center mb-2">
-          <img src="/logo-mark.png" alt="Pumasi Sign" style="height: 44px; width: auto; max-width: 100%; object-fit: contain;" />
+          <img src="/logo-mark.png" alt="Nolizi Sign" style="height: 44px; width: auto; max-width: 100%; object-fit: contain;" />
         </div>
         <h1 class="text-h5 font-weight-bold text-slate-900">
-          {{ activeTab === "signup" ? "Create your Pumasi account" : "Sign in to Pumasi Sign" }}
+          {{ activeTab === "signup" ? "Create your Nolizi account" : "Sign in to Nolizi Sign" }}
         </h1>
         <p class="text-caption text-medium-emphasis px-4">
           Simple, unmetered e-signatures with cryptographic tamper-evident certificates.
@@ -230,7 +230,7 @@ function resetToEmail() {
 
       <div class="text-center mt-6 pt-4 border-t">
         <span class="text-caption text-medium-emphasis">
-          By continuing, you agree to Pumasi's
+          By continuing, you agree to Nolizi's
           <router-link to="/terms">Terms of Service</router-link> and
           <router-link to="/privacy">Privacy Policy</router-link>.
         </span>

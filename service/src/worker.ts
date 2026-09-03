@@ -1,5 +1,5 @@
 /**
- * Pumasi Sign Cloudflare Worker Entrypoint.
+ * Nolizi Sign Cloudflare Worker Entrypoint.
  */
 
 import { PumasiSignService } from './durable.js';
@@ -35,7 +35,7 @@ const SIGN_SERVICE_NAME = 'pumasi-sign-main';
 const INTERNAL_PREFIX = '/__internal/';
 
 function operationalLog(level: 'info' | 'error', event: string, details: Record<string, unknown> = {}): void {
-  const entry = JSON.stringify({ timestamp: new Date().toISOString(), level, event, service: 'pumasi-sign', ...details });
+  const entry = JSON.stringify({ timestamp: new Date().toISOString(), level, event, service: 'nolizi-sign', ...details });
   if (level === 'error') console.error(entry);
   else console.log(entry);
 }
@@ -101,7 +101,7 @@ export default {
     // verifies the state and document dependencies required to serve users.
     if (path === '/api/health' || path === '/healthz') {
       return Response.json(
-        { status: 'ok', service: 'pumasi-sign', version: APP_VERSION, time: new Date().toISOString() },
+        { status: 'ok', service: 'nolizi-sign', version: APP_VERSION, time: new Date().toISOString() },
         { headers: corsHeaders }
       );
     }
@@ -116,14 +116,14 @@ export default {
         const body = await state.json() as { ready?: boolean };
         if (!body.ready) throw new Error('state probe was not ready');
         await env.DOCUMENTS.list({ limit: 1 });
-        return Response.json({ status: 'ready', service: 'pumasi-sign', version: APP_VERSION }, { headers: corsHeaders });
+        return Response.json({ status: 'ready', service: 'nolizi-sign', version: APP_VERSION }, { headers: corsHeaders });
       } catch (error) {
         operationalLog('error', 'readiness.failed', {
           request_id: requestId,
           error: error instanceof Error ? error.message : String(error),
         });
         return Response.json(
-          { status: 'unavailable', service: 'pumasi-sign', request_id: requestId },
+          { status: 'unavailable', service: 'nolizi-sign', request_id: requestId },
           { status: 503, headers: corsHeaders },
         );
       }
@@ -165,7 +165,7 @@ export default {
 
         const result = await submitFeedbackToGitHub(payload, {
           GITHUB_FEEDBACK_TOKEN: env.GITHUB_FEEDBACK_TOKEN,
-          GITHUB_FEEDBACK_REPO: env.GITHUB_FEEDBACK_REPO || 'pumasi-ai/pumasi-sign',
+          GITHUB_FEEDBACK_REPO: env.GITHUB_FEEDBACK_REPO || 'nolizi-prj/nolizi-sign',
         });
 
         return Response.json(result, { status: result.ok ? 200 : 500, headers: corsHeaders });
@@ -232,7 +232,7 @@ export default {
       return env.ASSETS.fetch(req);
     }
 
-    return new Response('Pumasi Sign Edge Service', { status: 200 });
+    return new Response('Nolizi Sign Edge Service', { status: 200 });
   },
 
   /**

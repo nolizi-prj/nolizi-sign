@@ -109,7 +109,7 @@ test('stampAndCertifyPdf affixes the public envelope ID to every executed docume
   });
 
   const probe = await readPdf(result.stampedPdfBytes);
-  const expected = `Pumasi Sign Envelope ID: ${envelopeUid}`;
+  const expected = `Nolizi Sign Envelope ID: ${envelopeUid}`;
 
   assert.equal(probe.pageCount, 4, 'three document pages plus the certificate');
   for (const [index, page] of probe.pages.slice(0, -1).entries()) {

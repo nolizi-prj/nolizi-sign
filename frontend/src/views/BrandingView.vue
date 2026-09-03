@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Pumasi Sign — Front-End Design & Branding Customizer.
+ * Nolizi Sign — Front-End Design & Branding Customizer.
  * Allows organizations to customize logo, brand colors, company title, and recipient experience.
  */
 import { onMounted, ref, watch } from "vue";
@@ -20,7 +20,7 @@ const cropOpen = ref(false);
 const selectedLogoFile = ref<File | null>(null);
 
 const COLOR_PRESETS = [
-  { name: "Pumasi Indigo", hex: "#1A56DB" },
+  { name: "Nolizi Indigo", hex: "#1A56DB" },
   { name: "Emerald Forest", hex: "#067647" },
   { name: "Royal Violet", hex: "#6941C6" },
   { name: "Crimson Rose", hex: "#E11D48" },
@@ -187,7 +187,7 @@ async function save() {
                 style="height: 36px; max-width: 140px; object-fit: contain;"
                 class="mr-3"
               />
-              <span class="text-h6 font-weight-bold">{{ companyName || 'Pumasi Sign' }}</span>
+              <span class="text-h6 font-weight-bold">{{ companyName || 'Nolizi Sign' }}</span>
             </div>
 
             <!-- Recipient Banner -->
@@ -219,7 +219,7 @@ async function save() {
               </v-btn>
               <div class="text-center">
                 <span class="text-caption text-medium-emphasis">
-                  Powered by Pumasi Sign &middot; Cryptographic Audit Trail
+                  Powered by Nolizi Sign &middot; Cryptographic Audit Trail
                 </span>
               </div>
             </div>

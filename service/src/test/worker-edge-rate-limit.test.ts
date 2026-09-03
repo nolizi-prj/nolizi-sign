@@ -65,7 +65,7 @@ test('A-962 · liveness is shallow while readiness verifies Durable Object and R
   env.DOCUMENTS = { async list(options: any) { listed++; assert.equal(options.limit, 1); return { objects: [] }; } };
   const ready = await worker.fetch(new Request('https://sign.example.test/api/ready'), env);
   assert.equal(ready.status, 200);
-  assert.deepEqual(await ready.json(), { status: 'ready', service: 'pumasi-sign', version: APP_VERSION });
+  assert.deepEqual(await ready.json(), { status: 'ready', service: 'nolizi-sign', version: APP_VERSION });
   assert.equal(listed, 1);
 });
 
@@ -77,6 +77,6 @@ test('A-963 · readiness fails closed without exposing dependency details', asyn
   }), env);
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
-    status: 'unavailable', service: 'pumasi-sign', request_id: 'test-ray',
+    status: 'unavailable', service: 'nolizi-sign', request_id: 'test-ray',
   });
 });

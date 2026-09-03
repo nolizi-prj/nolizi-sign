@@ -1,5 +1,5 @@
 /**
- * Cloudflare R2 Storage Wrapper for Pumasi Sign documents, templates, and signed PDFs.
+ * Cloudflare R2 Storage Wrapper for Nolizi Sign documents, templates, and signed PDFs.
  */
 
 export interface SignStorage {

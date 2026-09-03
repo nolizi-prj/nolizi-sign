@@ -116,12 +116,12 @@ async function verify(): Promise<void> {
         <div class="d-flex align-center mb-4">
           <img
             :src="(view as any).branding?.logo_data_url || '/logo-mark.png'"
-            :alt="(view as any).branding?.company_name || 'Pumasi Sign'"
+            :alt="(view as any).branding?.company_name || 'Nolizi Sign'"
             style="height: 36px; max-width: 140px; object-fit: contain;"
             class="mr-2"
           />
           <span class="text-subtitle-1 font-weight-bold" :style="{ color: (view as any).branding?.primary_color || '#1A56DB' }">
-            {{ (view as any).branding?.company_name || 'Pumasi Sign' }}
+            {{ (view as any).branding?.company_name || 'Nolizi Sign' }}
           </span>
         </div>
         <p class="text-overline mb-1">
@@ -132,7 +132,7 @@ async function verify(): Promise<void> {
           {{
             phase === "retrieve"
               ? CLOSED_MESSAGES[view.status]
-              : `${view.sender_name} at ${(view as any).branding?.company_name || 'Pumasi'} has requested your signature.`
+              : `${view.sender_name} at ${(view as any).branding?.company_name || 'Nolizi'} has requested your signature.`
           }}
         </p>
 

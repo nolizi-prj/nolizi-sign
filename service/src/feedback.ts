@@ -1,7 +1,7 @@
 /**
- * Pumasi Sign Feedback Pipeline -> GitHub Issues & Attachments.
+ * Nolizi Sign Feedback Pipeline -> GitHub Issues & Attachments.
  * Captures user feedback, screenshot, runtime diagnostics, and creates a GitHub
- * issue on https://github.com/pumasi-ai/pumasi-sign with full transparency.
+ * issue on https://github.com/nolizi-prj/nolizi-sign with full transparency.
  */
 
 export interface FeedbackDiagnosticError {
@@ -50,7 +50,7 @@ export async function submitFeedbackToGitHub(
   env: { GITHUB_FEEDBACK_TOKEN?: string; GITHUB_FEEDBACK_REPO?: string }
 ): Promise<FeedbackResult> {
   const token = env.GITHUB_FEEDBACK_TOKEN;
-  const repo = env.GITHUB_FEEDBACK_REPO || 'pumasi-ai/pumasi-sign';
+  const repo = env.GITHUB_FEEDBACK_REPO || 'nolizi-prj/nolizi-sign';
 
   if (!token) {
     // Fail loudly: claiming success here silently discarded every submission
@@ -86,7 +86,7 @@ export async function submitFeedbackToGitHub(
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.github+json',
-          'User-Agent': 'Pumasi-Sign-Feedback/1.0',
+          'User-Agent': 'Nolizi-Sign-Feedback/1.0',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -162,7 +162,7 @@ export async function submitFeedbackToGitHub(
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'Pumasi-Sign-Feedback/1.0',
+        'User-Agent': 'Nolizi-Sign-Feedback/1.0',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

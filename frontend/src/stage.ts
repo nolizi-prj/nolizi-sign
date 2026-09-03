@@ -24,7 +24,7 @@
  */
 export const STAGE = "alpha";
 
-/** Title-cased for prose: "Pumasi Sign is in active {{ STAGE_LABEL }}". */
+/** Title-cased for prose: "Nolizi Sign is in active {{ STAGE_LABEL }}". */
 export const STAGE_LABEL = STAGE.charAt(0).toUpperCase() + STAGE.slice(1);
 
 /**

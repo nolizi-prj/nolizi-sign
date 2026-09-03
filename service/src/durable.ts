@@ -1,5 +1,5 @@
 /**
- * Pumasi Sign Durable Object — auth, tenancy, envelopes, and signing.
+ * Nolizi Sign Durable Object — auth, tenancy, envelopes, and signing.
  *
  * Two principals, two cookies:
  *  - `sign_session`  — an account owner (sender). Random token in `sessions`.
@@ -204,7 +204,7 @@ export class PumasiSignService implements DurableObject {
       CREATE TABLE IF NOT EXISTS org_branding (
         id TEXT PRIMARY KEY,
         owner_id TEXT UNIQUE NOT NULL,
-        company_name TEXT NOT NULL DEFAULT 'Pumasi Sign',
+        company_name TEXT NOT NULL DEFAULT 'Nolizi Sign',
         logo_data_url TEXT,
         primary_color TEXT NOT NULL DEFAULT '#1A56DB',
         welcome_message TEXT DEFAULT 'Please review and sign this document.',
@@ -378,6 +378,8 @@ export class PumasiSignService implements DurableObject {
         created_at TEXT
       );
     `);
+    // Preserve custom workspace branding while migrating the former product default.
+    this.sql.exec(`UPDATE org_branding SET company_name = 'Nolizi Sign' WHERE company_name = 'Pumasi Sign'`);
 
     // Columns added after first deploy — each guarded, SQLite has no IF NOT EXISTS for columns.
     const alters = [
@@ -477,7 +479,7 @@ export class PumasiSignService implements DurableObject {
   }
 
   private baseUrl(): string {
-    return this.env.BASE_URL || 'https://sign.pumasi.ai';
+    return this.env.BASE_URL || 'https://sign.nolizi.com';
   }
 
   // ── document storage: R2 when bound, DO SQLite blobs otherwise ─────────
@@ -660,21 +662,21 @@ export class PumasiSignService implements DurableObject {
       : '';
     return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f8fa">
 <div style="max-width:520px;margin:0 auto;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-  <div style="text-align:center;margin-bottom:18px"><span style="font-size:18px;font-weight:700;color:#1A56DB">Pumasi Sign</span></div>
+  <div style="text-align:center;margin-bottom:18px"><span style="font-size:18px;font-weight:700;color:#1A56DB">Nolizi Sign</span></div>
   <div style="background:#ffffff;border:1px solid #e3e8ee;border-radius:12px;padding:28px">
     <h1 style="margin:0 0 16px;font-size:19px;color:#101828">${esc(heading)}</h1>
     ${body}${code}${cta}
   </div>
-  <p style="text-align:center;color:#98a2b3;font-size:12px;margin:16px 0 0">Sent by Pumasi Sign · sign.pumasi.ai<br>If you weren't expecting this email, you can safely ignore it.</p>
+  <p style="text-align:center;color:#98a2b3;font-size:12px;margin:16px 0 0">Sent by Nolizi Sign · sign.nolizi.com<br>If you weren't expecting this email, you can safely ignore it.</p>
 </div></body></html>`;
   }
 
   private async sendTeamInvitation(email: string, inviter: UserRow, workspaceName: string): Promise<void> {
-    const url = `${this.env.BASE_URL || 'https://sign.pumasi.ai'}/login?next=${encodeURIComponent('/dashboard')}`;
+    const url = `${this.env.BASE_URL || 'https://sign.nolizi.com'}/login?next=${encodeURIComponent('/dashboard')}`;
     await this.mailOrLog(
       email,
-      `${inviter.name} invited you to Pumasi Sign`,
-      `${inviter.name} (${inviter.email}) invited you to join ${workspaceName} in Pumasi Sign. Team membership does not give access to anyone else's envelopes or templates.\n\nAccept invitation: ${url}`,
+      `${inviter.name} invited you to Nolizi Sign`,
+      `${inviter.name} (${inviter.email}) invited you to join ${workspaceName} in Nolizi Sign. Team membership does not give access to anyone else's envelopes or templates.\n\nAccept invitation: ${url}`,
       this.mailHtml(`${inviter.name} invited you to join their team`, [
         `Join ${workspaceName} to create and send your own agreements. Membership does not expose anyone else's envelopes or templates.`,
         `Sign in with ${email} to accept this invitation.`,
@@ -792,7 +794,7 @@ export class PumasiSignService implements DurableObject {
       const ok = await this.mailOrLog(
         s.email,
         `${senderName} sent you "${sub.title}" to sign`,
-        `Hello ${s.name},\n\n${senderName} has requested your signature on "${sub.title}".\n\nReview and sign here:\n${link}\n\nYou will be asked for a verification code sent to this email address before the document opens.\n\n— Pumasi Sign`,
+        `Hello ${s.name},\n\n${senderName} has requested your signature on "${sub.title}".\n\nReview and sign here:\n${link}\n\nYou will be asked for a verification code sent to this email address before the document opens.\n\n— Nolizi Sign`,
         this.mailHtml(`${senderName} sent you a document to sign`, [
           `Hello ${s.name},`,
           `${senderName} has requested your signature on "${sub.title}".`,
@@ -1039,7 +1041,7 @@ export class PumasiSignService implements DurableObject {
       );
       // The system did this, not the sender: attributing it to a person would
       // be a false record. Same actor finalize() uses for `completed`.
-      this.audit(row.id, 'expired', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+      this.audit(row.id, 'expired', 'system@nolizi.com', 'Nolizi Sign Engine', undefined, {
         expires_at: row.expires_at,
       });
     }
@@ -1254,8 +1256,8 @@ export class PumasiSignService implements DurableObject {
       if ('error' in issued) return json({ error: issued.error }, 429);
       const ok = await this.mailOrLog(
         email,
-        'Your Pumasi Sign verification code',
-        `Your verification code is: ${issued.code}\n\nIt expires in ${CODE_TTL_MIN} minutes. If you did not request this, ignore this email.\n\n— Pumasi Sign`,
+        'Your Nolizi Sign verification code',
+        `Your verification code is: ${issued.code}\n\nIt expires in ${CODE_TTL_MIN} minutes. If you did not request this, ignore this email.\n\n— Nolizi Sign`,
         this.mailHtml('Your verification code', [
           `Enter this code to sign in. It expires in ${CODE_TTL_MIN} minutes.`,
         ], { code: issued.code }),
@@ -1281,7 +1283,7 @@ export class PumasiSignService implements DurableObject {
         {
           ok: true,
           user: this.accountUserOut(user),
-          branding: branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB' },
+          branding: branding || { company_name: 'Nolizi Sign', primary_color: '#1A56DB' },
         },
         200,
         { 'Set-Cookie': cookie },
@@ -1321,7 +1323,7 @@ export class PumasiSignService implements DurableObject {
       const user = this.sessionUser(req);
       if (!user) return json({ error: 'Not signed in' }, 401);
       const branding = this.one(`SELECT company_name, logo_data_url, primary_color, welcome_message FROM org_branding WHERE owner_id = ?`, this.workspaceFor(user).ownerId);
-      return json(branding || { company_name: 'Pumasi Sign', primary_color: '#1A56DB', welcome_message: null, logo_data_url: null });
+      return json(branding || { company_name: 'Nolizi Sign', primary_color: '#1A56DB', welcome_message: null, logo_data_url: null });
     }
 
     if (path === '/api/branding' && method === 'PUT') {
@@ -1335,7 +1337,7 @@ export class PumasiSignService implements DurableObject {
       if (existing) {
         this.sql.exec(
           `UPDATE org_branding SET company_name = ?, logo_data_url = ?, primary_color = ?, welcome_message = ?, updated_at = ? WHERE owner_id = ?`,
-          String(body.company_name || 'Pumasi Sign').slice(0, 120),
+          String(body.company_name || 'Nolizi Sign').slice(0, 120),
           body.logo_data_url ?? null,
           String(body.primary_color || '#1A56DB').slice(0, 20),
           body.welcome_message != null ? String(body.welcome_message).slice(0, 500) : null,
@@ -1346,7 +1348,7 @@ export class PumasiSignService implements DurableObject {
           `INSERT INTO org_branding (id, owner_id, company_name, logo_data_url, primary_color, welcome_message, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           `org-${crypto.randomUUID().slice(0, 8)}`, workspace.ownerId,
-          String(body.company_name || 'Pumasi Sign').slice(0, 120),
+          String(body.company_name || 'Nolizi Sign').slice(0, 120),
           body.logo_data_url ?? null,
           String(body.primary_color || '#1A56DB').slice(0, 20),
           body.welcome_message != null ? String(body.welcome_message).slice(0, 500) : null,
@@ -1619,7 +1621,7 @@ export class PumasiSignService implements DurableObject {
             `tsh-${crypto.randomUUID().slice(0, 12)}`, t.id, email, user.email, now,
           );
           if (!existing.has(email)) {
-            const url = `${this.env.BASE_URL || 'https://sign.pumasi.ai'}/templates`;
+            const url = `${this.env.BASE_URL || 'https://sign.nolizi.com'}/templates`;
             await this.mailOrLog(
               email,
               `${user.name} shared a template with you`,
@@ -2322,7 +2324,7 @@ export class PumasiSignService implements DurableObject {
         const ok = await this.mailOrLog(
           sub.email,
           `Your verification code for "${submission.title}"`,
-          `Your verification code is: ${issued.code}\n\nEnter it on the signing page to open the document. It expires in ${CODE_TTL_MIN} minutes.\n\n— Pumasi Sign`,
+          `Your verification code is: ${issued.code}\n\nEnter it on the signing page to open the document. It expires in ${CODE_TTL_MIN} minutes.\n\n— Nolizi Sign`,
           this.mailHtml('Your verification code', [
             `Enter this code on the signing page to open "${submission.title}". It expires in ${CODE_TTL_MIN} minutes.`,
           ], { code: issued.code }),
@@ -2572,7 +2574,7 @@ export class PumasiSignService implements DurableObject {
         await this.mailOrLog(
           submission.created_by,
           `"${submission.title}" was declined`,
-          `${me.name} (${me.email}) declined to sign "${submission.title}".${body.reason ? `\n\nReason: ${String(body.reason)}` : ''}\n\n— Pumasi Sign`,
+          `${me.name} (${me.email}) declined to sign "${submission.title}".${body.reason ? `\n\nReason: ${String(body.reason)}` : ''}\n\n— Nolizi Sign`,
         );
         return json({ ok: true });
       }
@@ -2651,7 +2653,7 @@ export class PumasiSignService implements DurableObject {
     const originalPdf = await this.loadPdf(sub.original_pdf_key, sub.original_pdf_blob);
 
     if (!originalPdf) {
-      this.audit(submissionId, 'completion_failed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+      this.audit(submissionId, 'completion_failed', 'system@nolizi.com', 'Nolizi Sign Engine', undefined, {
         reason: 'original_document_unavailable',
       });
       return false;
@@ -2706,7 +2708,7 @@ export class PumasiSignService implements DurableObject {
       const stored = row.data_key ? await this.docs()?.getDocument(row.data_key) : null;
       const bytes = stored?.data ?? (row.data_blob ? new Uint8Array(row.data_blob) : null);
       if (!bytes) {
-        this.audit(submissionId, 'completion_failed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+        this.audit(submissionId, 'completion_failed', 'system@nolizi.com', 'Nolizi Sign Engine', undefined, {
           reason: 'attachment_unavailable', attachmentId: row.id,
         });
         return false;
@@ -2733,14 +2735,14 @@ export class PumasiSignService implements DurableObject {
       certificateKey ? null : stampRes.certificatePdfBytes, certificateKey,
       stampRes.originalHash, stampRes.completedHash, certificateHash, now, submissionId,
     );
-    this.audit(submissionId, 'completed', 'system@pumasi.ai', 'Pumasi Sign Engine', undefined, {
+    this.audit(submissionId, 'completed', 'system@nolizi.com', 'Nolizi Sign Engine', undefined, {
       originalHash: stampRes.originalHash, completedHash: stampRes.completedHash, certificateHash,
     });
 
     await this.mailOrLog(
       sub.created_by,
       `"${sub.title}" is fully signed`,
-      `Everyone has signed "${sub.title}".\n\nDownload the executed document from your dashboard:\n${this.baseUrl()}/envelopes/${sub.id}\n\n— Pumasi Sign`,
+      `Everyone has signed "${sub.title}".\n\nDownload the executed document from your dashboard:\n${this.baseUrl()}/envelopes/${sub.id}\n\n— Nolizi Sign`,
       this.mailHtml('Everyone has signed', [
         `"${sub.title}" is complete. The executed document with its signature certificate is ready.`,
       ], { cta: { label: 'Open the envelope', url: `${this.baseUrl()}/envelopes/${sub.id}` } }),
@@ -2749,7 +2751,7 @@ export class PumasiSignService implements DurableObject {
       await this.mailOrLog(
         s.email,
         `"${sub.title}" is fully signed`,
-        `Hello ${s.name},\n\nEveryone has signed "${sub.title}". You can retrieve the executed document any time:\n${this.baseUrl()}/sign/t/${s.token}\n\n— Pumasi Sign`,
+        `Hello ${s.name},\n\nEveryone has signed "${sub.title}". You can retrieve the executed document any time:\n${this.baseUrl()}/sign/t/${s.token}\n\n— Nolizi Sign`,
         this.mailHtml('Everyone has signed', [
           `Hello ${s.name},`,
           `Everyone has signed "${sub.title}". You can retrieve the executed document any time.`,
@@ -2770,7 +2772,7 @@ export class PumasiSignService implements DurableObject {
         const delivered = await this.mailOrLog(
           archive.email,
           `Archive copy: "${sub.title}" is fully signed`,
-          `The completed envelope "${sub.title}" is attached for your organization's records.\n\nThis automatic archive copy was configured by the workspace administrator.\n\n— Pumasi Sign`,
+          `The completed envelope "${sub.title}" is attached for your organization's records.\n\nThis automatic archive copy was configured by the workspace administrator.\n\n— Nolizi Sign`,
           this.mailHtml('Completed envelope archive copy', [
             `The completed envelope "${sub.title}" is attached for your organization's records.`,
             'This automatic archive copy was configured by the workspace administrator.',
